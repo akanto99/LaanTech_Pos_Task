@@ -43,6 +43,13 @@ ResponseBody _json(int status, Object body) => ResponseBody.fromString(
   },
 );
 
+extension<T> on Stream<T> {
+  Stream<T> followedBy(Object error) async* {
+    yield* this;
+    throw error;
+  }
+}
+
 void main() {
   late Directory root;
 
@@ -172,6 +179,32 @@ void main() {
     );
 
     expect(File(path).lengthSync(), 3);
+  });
+
+  test('a connection dropped mid-download is a retryable error', () async {
+    final path = '${root.path}/file.bin.part';
+    final adapter = _FakeAdapter(
+      (_) => ResponseBody(
+        Stream<Uint8List>.fromIterable([
+          Uint8List.fromList([1, 2]),
+        ]).followedBy(const SocketException('Connection reset')),
+        200,
+        headers: {
+          HttpHeaders.contentLengthHeader: ['10'],
+        },
+      ),
+    );
+
+    await expectLater(
+      service(adapter).downloadFileApi(
+        'http://host/get?file=f',
+        savePath: path,
+        cancelToken: CancelToken(),
+        onProgress: (_, _) {},
+      ),
+      throwsA(isA<FetchDataException>()),
+    );
+    expect(File(path).readAsBytesSync(), [1, 2]);
   });
 
   test('rejects uploads whose source file no longer exists', () async {

@@ -159,6 +159,12 @@ class NetworkApiService extends BaseApiServices {
       throw _stalledError;
     } on FileSystemException catch (e) {
       throw _mapFileSystemException(e);
+    } on IOException {
+      // A dropped connection mid-body surfaces as a raw socket/HTTP error
+      // from the response stream rather than a DioException.
+      throw const FetchDataException(
+        'The connection was interrupted. The download will resume.',
+      );
     }
   }
 

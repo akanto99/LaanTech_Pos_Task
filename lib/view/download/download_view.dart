@@ -5,6 +5,7 @@ import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/data/response/status.dart';
 import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
@@ -122,7 +123,10 @@ class _ServerFileTile extends StatelessWidget {
     final deleting = context.select<ServerFilesViewModel, bool>(
       (vm) => vm.isDeleting(file.name),
     );
-    final inFlight = task != null && !task.status.isFinished;
+    final inFlight =
+        task != null &&
+        task.status != TransferStatus.completed &&
+        task.status != TransferStatus.cancelled;
 
     return Card(
       child: Padding(
@@ -201,14 +205,17 @@ class _ServerFileTile extends StatelessWidget {
                         child: LinearProgressIndicator(
                           minHeight: 6,
                           value: task.progress,
+                          color: TransferStatusChip.colorOf(task.status),
                         ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      task.status == TransferStatus.paused
-                          ? 'Paused ${task.percent}%'
-                          : '${task.percent}%',
+                      switch (task.status) {
+                        TransferStatus.paused => 'Paused ${task.percent}%',
+                        TransferStatus.failed => 'Failed ${task.percent}%',
+                        _ => '${task.percent}%',
+                      },
                       style: AppTextStyles.textSize12(
                         context,
                         weight: FontWeight.w600,
@@ -217,6 +224,22 @@ class _ServerFileTile extends StatelessWidget {
                   ],
                 ),
               ),
+              if (task.error != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6, right: 10),
+                    child: Text(
+                      task.error!,
+                      style: AppTextStyles.textSize12(
+                        context,
+                        color: task.status == TransferStatus.failed
+                            ? AppColors.error
+                            : AppColors.warning,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ],
         ),

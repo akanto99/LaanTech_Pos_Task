@@ -7,8 +7,8 @@ class AppConfig {
   static const Duration transferIdleTimeout = Duration(seconds: 60);
 
   static const int maxConcurrentTransfers = 2;
-  static const int maxAutoRetries = 3;
-  static const Duration retryBaseDelay = Duration(seconds: 2);
+  static const int maxAutoRetries = 5;
+  static const Duration retryBaseDelay = Duration(seconds: 3);
   static const int maxHistory = 100;
 
   /// Mirrors the server whitelist; anything else is rejected with HTTP 415.

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:laantech_pos_task/configs/res/app_config.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/data/network/base_api_services.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
@@ -125,7 +126,10 @@ void main() {
   setUp(() async {
     root = await Directory.systemTemp.createTemp('transfers');
     api = FakeTransferApi();
-    store = TransferStore(dataDirectory: () async => root);
+    store = TransferStore(
+      dataDirectory: () async => root,
+      temporaryDirectory: () async => Directory('${root.path}/cache'),
+    );
     manager = createManager();
   });
 
@@ -146,6 +150,32 @@ void main() {
     expect(task.transferredBytes, 1000);
   });
 
+  test(
+    'temporary picker copies are deleted after upload, user files kept',
+    () async {
+      final cache = Directory('${root.path}/cache')..createSync();
+      final picked = File('${cache.path}/catalog.csv')..writeAsStringSync('x');
+      final userFile = File('${root.path}/catalog.csv')..writeAsStringSync('x');
+      api.uploadResults.addAll([
+        {
+          'file': {'name': 'a.csv', 'url': 'u'},
+        },
+        {
+          'file': {'name': 'b.csv', 'url': 'u'},
+        },
+      ]);
+
+      await enqueue(upload('u1').copyWith(localPath: picked.path));
+      await settle('u1');
+      await enqueue(upload('u2'));
+      await settle('u2');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(picked.existsSync(), isFalse);
+      expect(userFile.existsSync(), isTrue);
+    },
+  );
+
   test('transient upload failures are retried with backoff', () async {
     api.uploadResults.addAll([
       const FetchDataException('No internet connection.'),
@@ -162,14 +192,17 @@ void main() {
 
   test('retries stop after the configured limit', () async {
     api.uploadResults.addAll(
-      List.filled(4, const FetchDataException('Timed out.')),
+      List.filled(
+        AppConfig.maxAutoRetries + 1,
+        const FetchDataException('Timed out.'),
+      ),
     );
     await enqueue(upload('u1'));
 
     final task = await settle('u1');
     expect(task.status, TransferStatus.failed);
     expect(task.error, 'Timed out.');
-    expect(api.uploadCalls, 4);
+    expect(api.uploadCalls, AppConfig.maxAutoRetries + 1);
   });
 
   test('permanent errors are not retried', () async {
@@ -210,7 +243,10 @@ void main() {
     () async {
       var calls = 0;
       api.downloadResults.addAll(
-        List.generate(6, (_) => const FetchDataException('Connection reset.')),
+        List.generate(
+          AppConfig.maxAutoRetries + 3,
+          (_) => const FetchDataException('Connection reset.'),
+        ),
       );
       api.onDownload = (savePath) {
         calls++;
@@ -220,7 +256,7 @@ void main() {
 
       final task = await settle('d1');
       expect(task.status, TransferStatus.completed);
-      expect(calls, 7);
+      expect(calls, AppConfig.maxAutoRetries + 4);
     },
   );
 

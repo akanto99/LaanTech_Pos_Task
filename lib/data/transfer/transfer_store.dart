@@ -9,11 +9,14 @@ class TransferStore {
   TransferStore({
     Future<Directory> Function()? dataDirectory,
     Future<Directory> Function()? downloadsDirectory,
+    Future<Directory> Function()? temporaryDirectory,
   }) : _dataDirectory = dataDirectory ?? getApplicationSupportDirectory,
-       _downloadsDirectory = downloadsDirectory ?? _defaultDownloadsDirectory;
+       _downloadsDirectory = downloadsDirectory ?? _defaultDownloadsDirectory,
+       _temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory;
 
   final Future<Directory> Function() _dataDirectory;
   final Future<Directory> Function() _downloadsDirectory;
+  final Future<Directory> Function() _temporaryDirectory;
   Future<void> _lastWrite = Future.value();
 
   Future<File> get _file async =>
@@ -41,6 +44,16 @@ class TransferStore {
       await temp.writeAsString(json, flush: true);
       await temp.rename(file.path);
     });
+  }
+
+  /// The file picker copies selections into the app cache; those copies are
+  /// app-owned and deleted once no longer needed. User files are never touched.
+  Future<void> deleteIfTemporary(String path) async {
+    final temporary = (await _temporaryDirectory()).path;
+    final file = File(path);
+    if (path.startsWith('$temporary/') && await file.exists()) {
+      await file.delete();
+    }
   }
 
   Future<Directory> downloadsDirectory() async {

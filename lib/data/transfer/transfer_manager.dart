@@ -82,16 +82,19 @@ class TransferManager {
       case TransferAction.retry:
         _requeue(id!);
       case TransferAction.remove:
+        final task = _tasks[id];
         await _stop(id!, TransferStatus.cancelled);
         _tasks.remove(id);
+        if (task != null) await _discardFiles(task);
       case TransferAction.clearFinished:
         for (final task in tasks.where((task) => task.status.isFinished)) {
-          await _deletePartial(task);
+          await _discardFiles(task);
           _tasks.remove(task.id);
         }
       case TransferAction.reset:
         for (final task in _tasks.values.toList()) {
           await _stop(task.id, TransferStatus.cancelled);
+          await _discardFiles(task);
         }
         _tasks.clear();
       case TransferAction.sync:
@@ -196,7 +199,7 @@ class TransferManager {
         final stop = _stopRequests.remove(id);
         final current = _tasks[id];
         if (current == null) {
-          await _deletePartial(task);
+          await _discardFiles(task);
           break;
         }
         if (stop != null) {
@@ -263,6 +266,7 @@ class TransferManager {
         remoteUrl: file['url'] as String?,
       ),
     );
+    await _store.deleteIfTemporary(task.localPath);
   }
 
   Future<void> _download(String id, CancelToken token) async {
@@ -300,6 +304,12 @@ class TransferManager {
     _notifier?.onTaskChanged(task);
     _onChanged?.call();
   }
+
+  /// Removes app-owned data for a task leaving the queue: a download's
+  /// partial file or an upload's temporary picker copy.
+  Future<void> _discardFiles(TransferTask task) => task.isUpload
+      ? _store.deleteIfTemporary(task.localPath)
+      : _deletePartial(task);
 
   Future<void> _deletePartial(TransferTask task) async {
     if (task.isUpload) return;
