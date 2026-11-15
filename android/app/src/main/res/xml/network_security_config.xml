@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- The assessment mock server is HTTP-only; cleartext is allowed for that host alone. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">108.136.142.112</domain>
+    </domain-config>
+</network-security-config>
