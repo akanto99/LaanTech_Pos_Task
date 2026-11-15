@@ -54,14 +54,26 @@ class TransferRepository {
 
   void detach() => FlutterForegroundTask.removeTaskDataCallback(_onServiceData);
 
+  /// Loads the persisted queue. If the process was killed mid-transfer
+  /// (force stop, crash, reboot) the restored work is resumed immediately.
   Future<List<TransferTask>> loadTasks() async {
     if (await FlutterForegroundTask.isRunningService) {
       FlutterForegroundTask.sendDataToTask(
         const TransferCommand(TransferAction.sync).toJson(),
       );
+      return (await _store.load())
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
     final manager = TransferManager(store: _store);
     await manager.restore();
+    if (manager.hasActiveWork) {
+      await manager.persist();
+      try {
+        await _startService();
+      } on AppException {
+        // Left queued; the next refresh or app resume tries again.
+      }
+    }
     return manager.tasks;
   }
 
