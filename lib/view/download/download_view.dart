@@ -1,0 +1,226 @@
+import 'package:flutter/material.dart';
+import 'package:laantech_pos_task/configs/res/color.dart';
+import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
+import 'package:laantech_pos_task/configs/utils/utils.dart';
+import 'package:laantech_pos_task/configs/widgets/state_views.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
+import 'package:laantech_pos_task/data/response/status.dart';
+import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
+import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
+import 'package:laantech_pos_task/view_model/server_files_view_model/server_files_view_model.dart';
+import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:provider/provider.dart';
+
+class DownloadView extends StatelessWidget {
+  const DownloadView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => ServerFilesViewModel()..fetchFiles(),
+      child: const _ServerFilesScreen(),
+    );
+  }
+}
+
+class _ServerFilesScreen extends StatelessWidget {
+  const _ServerFilesScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = context.watch<ServerFilesViewModel>();
+    final files = vm.files;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Server files'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: vm.fetchFiles,
+          ),
+        ],
+      ),
+      body: switch (files.status) {
+        Status.loading => const Center(child: CircularProgressIndicator()),
+        Status.error => ErrorStateView(
+          message: files.message!,
+          onRetry: vm.fetchFiles,
+        ),
+        Status.completed => RefreshIndicator(
+          onRefresh: () => vm.fetchFiles(silent: true),
+          child: files.data!.isEmpty
+              ? ListView(
+                  children: const [
+                    SizedBox(height: 80),
+                    EmptyStateView(
+                      icon: Icons.folder_open_rounded,
+                      title: 'No files on the server',
+                      message: 'Files you upload will be listed here.',
+                    ),
+                  ],
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: files.data!.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (_, index) =>
+                      _ServerFileTile(file: files.data![index]),
+                ),
+        ),
+      },
+    );
+  }
+}
+
+class _ServerFileTile extends StatelessWidget {
+  const _ServerFileTile({required this.file});
+
+  final ServerFileModel file;
+
+  IconData get _icon {
+    if (file.type.startsWith('image/')) return Icons.image_outlined;
+    if (file.type.startsWith('video/')) return Icons.movie_outlined;
+    if (file.type.startsWith('audio/')) return Icons.audiotrack_outlined;
+    if (file.type.contains('csv') || file.type.contains('sheet')) {
+      return Icons.table_chart_outlined;
+    }
+    return Icons.insert_drive_file_outlined;
+  }
+
+  Future<void> _download(BuildContext context) async {
+    final error = await context.read<TransferViewModel>().download(file);
+    if (!context.mounted) return;
+    error == null
+        ? Utils.flushBarSuccessMessage('Download started', context)
+        : Utils.flushBarErrorMessage(error, context);
+  }
+
+  Future<void> _delete(BuildContext context) async {
+    final confirmed = await Utils.confirm(
+      context,
+      title: 'Delete from server?',
+      message:
+          '"${file.originalName}" will be permanently removed from the server.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await context.read<ServerFilesViewModel>().deleteFile(file);
+    if (error != null && context.mounted) {
+      Utils.flushBarErrorMessage(error, context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = context.select<TransferViewModel, TransferTask?>(
+      (vm) => vm.latestDownloadOf(file.name),
+    );
+    final deleting = context.select<ServerFilesViewModel, bool>(
+      (vm) => vm.isDeleting(file.name),
+    );
+    final inFlight = task != null && !task.status.isFinished;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(_icon, color: AppColors.secondary, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.originalName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.textSize14(
+                          context,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '${Formatters.fileSize(file.size)} · ${Formatters.dateTime(file.uploadedAt)}',
+                        style: AppTextStyles.textSize12(
+                          context,
+                          color: AppColors.subtitle(context),
+                        ),
+                      ),
+                      if (task?.status == TransferStatus.completed)
+                        Text(
+                          'Downloaded',
+                          style: AppTextStyles.textSize12(
+                            context,
+                            weight: FontWeight.w600,
+                            color: AppColors.success,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (inFlight)
+                  TransferActions(task: task)
+                else
+                  IconButton.filledTonal(
+                    tooltip: 'Download',
+                    onPressed: () => _download(context),
+                    icon: const Icon(Icons.download_rounded),
+                  ),
+                deleting
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: 'Delete from server',
+                        onPressed: inFlight ? null : () => _delete(context),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
+              ],
+            ),
+            if (inFlight) ...[
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          minHeight: 6,
+                          value: task.progress,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      task.status == TransferStatus.paused
+                          ? 'Paused ${task.percent}%'
+                          : '${task.percent}%',
+                      style: AppTextStyles.textSize12(
+                        context,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

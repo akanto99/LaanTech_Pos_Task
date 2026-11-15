@@ -1,0 +1,155 @@
+import 'package:flutter/material.dart';
+import 'package:laantech_pos_task/configs/res/color.dart';
+import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
+import 'package:laantech_pos_task/configs/utils/utils.dart';
+import 'package:laantech_pos_task/configs/widgets/state_views.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
+import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
+import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:provider/provider.dart';
+
+class TransferDetailsView extends StatelessWidget {
+  const TransferDetailsView({super.key, required this.transferId});
+
+  final String transferId;
+
+  Future<void> _remove(BuildContext context, TransferTask task) async {
+    final confirmed = await Utils.confirm(
+      context,
+      title: 'Remove from history?',
+      message: task.status.isFinished
+          ? 'This entry will be removed. Downloaded files stay on the device.'
+          : 'The transfer will be cancelled and removed.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await context.read<TransferViewModel>().remove(task.id);
+    if (!context.mounted) return;
+    error == null
+        ? Navigator.pop(context)
+        : Utils.flushBarErrorMessage(error, context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = context.select<TransferViewModel, TransferTask?>(
+      (vm) => vm.byId(transferId),
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Transfer details'),
+        actions: [
+          if (task != null)
+            IconButton(
+              tooltip: 'Remove from history',
+              onPressed: () => _remove(context, task),
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+        ],
+      ),
+      body: task == null
+          ? const EmptyStateView(
+              icon: Icons.history_toggle_off_rounded,
+              title: 'Transfer not found',
+              message: 'It may have been cleared from the history.',
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.fileName,
+                          style: AppTextStyles.textSize18(
+                            context,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TransferStatusChip(status: task.status),
+                        const SizedBox(height: 16),
+                        LinearProgressIndicator(
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                          value: task.progress,
+                          color: TransferStatusChip.colorOf(task.status),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${task.percent}% · ${Formatters.fileSize(task.transferredBytes)} of ${Formatters.fileSize(task.totalBytes)}',
+                          style: AppTextStyles.textSize14(context),
+                        ),
+                        if (task.error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            task.error!,
+                            style: AppTextStyles.textSize14(
+                              context,
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        TransferActions(task: task),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Column(
+                    children: [
+                      _InfoRow('Transfer ID', task.id),
+                      _InfoRow('Type', task.isUpload ? 'Upload' : 'Download'),
+                      _InfoRow('Local path', task.localPath),
+                      _InfoRow('Server file', task.serverFileName ?? '—'),
+                      _InfoRow('Created', Formatters.dateTime(task.createdAt)),
+                      _InfoRow('Updated', Formatters.dateTime(task.updatedAt)),
+                      if (task.isUpload)
+                        const _InfoRow(
+                          'Resume support',
+                          'Not available: the server accepts uploads as a single request, so a retry restarts from 0%.',
+                        )
+                      else
+                        const _InfoRow(
+                          'Resume support',
+                          'HTTP Range: pausing keeps the partial file and resumes from it.',
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      title: Text(
+        label,
+        style: AppTextStyles.textSize12(
+          context,
+          color: AppColors.subtitle(context),
+        ),
+      ),
+      subtitle: SelectableText(value, style: AppTextStyles.textSize14(context)),
+    );
+  }
+}
