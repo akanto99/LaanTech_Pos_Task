@@ -56,20 +56,22 @@ class TransferTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        // Wraps onto a second line on narrow screens.
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             TransferStatusChip(status: task.status),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                showProgress
-                                    ? subtitle
-                                    : Formatters.fileSize(task.totalBytes),
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTextStyles.textSize12(
-                                  context,
-                                  color: AppColors.subtitle(context),
-                                ),
+                            Text(
+                              showProgress
+                                  ? subtitle
+                                  : Formatters.fileSize(task.totalBytes),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.textSize12(
+                                context,
+                                color: AppColors.subtitle(context),
                               ),
                             ),
                           ],

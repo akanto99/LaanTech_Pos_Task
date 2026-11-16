@@ -116,9 +116,10 @@ class _HomeViewState extends State<HomeView> {
             GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 420,
-                mainAxisExtent: 84,
+                // Grows with the user's text size so the two text lines fit.
+                mainAxisExtent: MediaQuery.textScalerOf(context).scale(84),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
@@ -249,17 +250,26 @@ class _StatTile extends StatelessWidget {
       child: Card(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          // One line each, scaled down on narrow screens or large text.
           child: Column(
             children: [
-              Text(
-                '$value',
-                style: AppTextStyles.textSize24(context, color: color),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '$value',
+                  maxLines: 1,
+                  style: AppTextStyles.textSize24(context, color: color),
+                ),
               ),
-              Text(
-                label,
-                style: AppTextStyles.textSize12(
-                  context,
-                  color: AppColors.subtitle(context),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: AppTextStyles.textSize12(
+                    context,
+                    color: AppColors.subtitle(context),
+                  ),
                 ),
               ),
             ],

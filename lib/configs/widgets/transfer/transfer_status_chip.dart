@@ -37,6 +37,8 @@ class TransferStatusChip extends StatelessWidget {
       ),
       child: Text(
         labelOf(status),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: AppTextStyles.textSize12(
           context,
           weight: FontWeight.w600,

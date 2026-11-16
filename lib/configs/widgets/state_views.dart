@@ -18,8 +18,9 @@ class EmptyStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Scrolls instead of overflowing on short screens (landscape, large text).
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,

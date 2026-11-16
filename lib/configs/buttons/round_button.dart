@@ -40,12 +40,20 @@ class RoundButton extends StatelessWidget {
                     Icon(iconData, size: 20),
                     const SizedBox(width: 8),
                   ],
-                  Text(
-                    title,
-                    style: AppTextStyles.textSize16(
-                      context,
-                      weight: FontWeight.w600,
-                      color: AppColors.whiteColor,
+                  // Scales the label down on narrow screens or large text
+                  // settings instead of overflowing the button.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        style: AppTextStyles.textSize16(
+                          context,
+                          weight: FontWeight.w600,
+                          color: AppColors.whiteColor,
+                        ),
+                      ),
                     ),
                   ),
                 ],

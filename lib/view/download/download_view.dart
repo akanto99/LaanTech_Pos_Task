@@ -16,12 +16,16 @@ import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_m
 import 'package:provider/provider.dart';
 
 class DownloadView extends StatelessWidget {
-  const DownloadView({super.key});
+  const DownloadView({super.key, this.createViewModel});
+
+  /// Supplies the screen's view model in tests; it creates its own otherwise.
+  @visibleForTesting
+  final ServerFilesViewModel Function()? createViewModel;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ServerFilesViewModel()..fetchFiles(),
+      create: (_) => (createViewModel?.call() ?? ServerFilesViewModel())..fetchFiles(),
       child: const _ServerFilesScreen(),
     );
   }
