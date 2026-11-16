@@ -366,6 +366,26 @@ void main() {
     expect(task('u1').bodySentAt, isNull);
   });
 
+  test('upload progress stops at 99% until the server confirms the upload', () async {
+    recordHistory();
+    await manager.start();
+    final respond = Completer<Object?>();
+    api.uploads.add((onProgress, _, _) async {
+      onProgress(1000, 1000); // every byte written to the socket
+      return respond.future;
+    });
+
+    await enqueue(upload('u1'));
+    await until(() => task('u1').bodySentAt != null, reason: 'body sent');
+    expect(task('u1').transferredBytes, 999);
+    expect(task('u1').percent, 99, reason: 'written is not accepted');
+    respond.complete({
+      'file': {'name': 'promo_x3.mp4', 'url': 'u'},
+    });
+    await until(() => task('u1').status == TransferStatus.completed, reason: 'completion');
+    expect(task('u1').percent, 100);
+  });
+
   test('a lost upload with no matching server file is uploaded again', () async {
     api.uploads
       ..add((onProgress, _, _) async {

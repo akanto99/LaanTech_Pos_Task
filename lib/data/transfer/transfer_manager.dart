@@ -486,7 +486,8 @@ class TransferManager {
         }
       } else {
         _abortIfDeadAfterLoss(id);
-        final finished = task.isUpload && task.totalBytes > 0 && task.transferredBytes >= task.totalBytes;
+        // An upload whose whole body is sent only awaits the response.
+        final finished = task.isUpload && task.bodySentAt != null;
         health = tracker.classify(task.networkHealth, finished: finished);
         speed = health == NetworkHealth.stalled ? 0 : tracker.bytesPerSecond;
       }
@@ -524,9 +525,12 @@ class TransferManager {
       filePath: task.localPath,
       fileName: task.fileName,
       cancelToken: token,
-      // Multipart framing adds a few bytes, so progress is scaled to the file size.
+      // Multipart framing adds a few bytes, so progress is scaled to the file
+      // size. Bytes handed to the socket are not yet accepted by the server,
+      // so the bar stops at 99% until the server confirms the upload.
       onProgress: (sent, total) {
-        _progress(id, total > 0 ? (sent * task.totalBytes / total).round() : sent);
+        final scaled = total > 0 ? (sent * task.totalBytes / total).round() : sent;
+        _progress(id, task.totalBytes > 1 && scaled >= task.totalBytes ? task.totalBytes - 1 : scaled);
         if (total > 0 && sent >= total && _tasks[id]?.bodySentAt == null) {
           _update(_tasks[id]!.copyWith(bodySentAt: _clock()));
         }
