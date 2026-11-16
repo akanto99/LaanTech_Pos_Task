@@ -6,11 +6,20 @@ import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
+import 'package:laantech_pos_task/model/video/video_player_args.dart';
 
 class TransferTile extends StatelessWidget {
   const TransferTile({super.key, required this.task});
 
   final TransferTask task;
+
+  void _openDetails(BuildContext context) => Navigator.pushNamed(context, RoutesName.transferDetails, arguments: task.id);
+
+  void _play(BuildContext context) => Navigator.pushNamed(
+    context,
+    RoutesName.videoPlayer,
+    arguments: VideoPlayerArgs(serverFileName: task.serverFileName!, title: task.fileName),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -22,11 +31,7 @@ class TransferTile extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.pushNamed(
-          context,
-          RoutesName.transferDetails,
-          arguments: task.id,
-        ),
+        onTap: () => task.canPlayVideo ? _play(context) : _openDetails(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
           child: Column(
@@ -34,7 +39,7 @@ class TransferTile extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _TypeIcon(isUpload: task.isUpload),
+                  _TypeIcon(isUpload: task.isUpload, playable: task.canPlayVideo),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -72,6 +77,12 @@ class TransferTile extends StatelessWidget {
                     ),
                   ),
                   TransferActions(task: task),
+                  if (task.canPlayVideo)
+                    IconButton(
+                      tooltip: 'Transfer details',
+                      onPressed: () => _openDetails(context),
+                      icon: const Icon(Icons.info_outline_rounded),
+                    ),
                 ],
               ),
               if (showProgress) ...[
@@ -125,9 +136,10 @@ class TransferTile extends StatelessWidget {
 }
 
 class _TypeIcon extends StatelessWidget {
-  const _TypeIcon({required this.isUpload});
+  const _TypeIcon({required this.isUpload, required this.playable});
 
   final bool isUpload;
+  final bool playable;
 
   @override
   Widget build(BuildContext context) {
@@ -139,9 +151,9 @@ class _TypeIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
-        isUpload ? Icons.upload_rounded : Icons.download_rounded,
+        playable ? Icons.play_arrow_rounded : (isUpload ? Icons.upload_rounded : Icons.download_rounded),
         color: color,
-        semanticLabel: isUpload ? 'Upload' : 'Download',
+        semanticLabel: playable ? 'Play video' : (isUpload ? 'Upload' : 'Download'),
       ),
     );
   }

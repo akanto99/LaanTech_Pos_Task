@@ -1,3 +1,5 @@
+import 'package:laantech_pos_task/configs/utils/file_names.dart';
+
 enum TransferType { upload, download }
 
 enum TransferStatus {
@@ -59,6 +61,9 @@ class TransferTask {
   bool get canCancel => status.isActive || status == TransferStatus.paused;
 
   String get partialPath => '$localPath.part';
+
+  /// A finished transfer of a video references a server file that can be streamed.
+  bool get canPlayVideo => status == TransferStatus.completed && serverFileName != null && FileNames.isVideo(fileName);
 
   TransferTask copyWith({String? localPath, int? totalBytes, int? transferredBytes, TransferStatus? status, String? error, bool clearError = false, String? serverFileName, String? remoteUrl}) =>
       TransferTask(

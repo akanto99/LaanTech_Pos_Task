@@ -1,8 +1,13 @@
+import 'package:flutter/services.dart';
+
 class AppConfig {
   static const String appName = 'LaanTech POS';
 
   /// Completed downloads are saved to the public `Download/<this>/` folder.
   static const String publicDownloadFolder = 'LaanTech';
+
+  /// App-wide orientations; the video player restores these after fullscreen.
+  static const List<DeviceOrientation> orientations = [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight];
 
   static const Duration connectTimeout = Duration(seconds: 20);
   static const Duration apiTimeout = Duration(seconds: 30);
@@ -35,12 +40,11 @@ class AppConfig {
     'xlsx',
     'zip',
     'json',
-    'mp4',
-    'mov',
-    'mkv',
-    'webm',
-    'avi',
+    ...videoExtensions,
     'mp3',
     'wav',
   ];
+
+  /// Uploaded files with these extensions can be played in the app.
+  static const List<String> videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi'];
 }

@@ -1,3 +1,5 @@
+import 'package:laantech_pos_task/configs/utils/file_names.dart';
+
 class ServerFileModel {
   final int id;
 
@@ -8,6 +10,8 @@ class ServerFileModel {
   final String type;
   final DateTime? uploadedAt;
   final String url;
+
+  bool get isVideo => type.startsWith('video/') || FileNames.isVideo(originalName);
 
   const ServerFileModel({required this.id, required this.name, required this.originalName, required this.size, required this.type, required this.uploadedAt, required this.url});
 

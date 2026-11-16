@@ -207,6 +207,22 @@ void main() {
     expect(File(path).readAsBytesSync(), [1, 2]);
   });
 
+  test('detects Range support from a 206 with Content-Range', () async {
+    final adapter = _FakeAdapter(
+      (options) => options.headers['Range'] == 'bytes=0-1'
+          ? ResponseBody.fromBytes([0, 0], 206, headers: {'content-range': ['bytes 0-1/1000']})
+          : ResponseBody.fromBytes(List.filled(1000, 0), 200),
+    );
+    expect(await service(adapter).supportsRangeRequests('http://108.136.142.112:90/get?file=a.mp4'), isTrue);
+    expect(adapter.requests.single.headers['Authorization'], 'Bearer jwt');
+
+    final ignoring = _FakeAdapter((_) => ResponseBody.fromBytes(List.filled(1000, 0), 200));
+    expect(await service(ignoring).supportsRangeRequests('http://108.136.142.112:90/get?file=a.mp4'), isFalse);
+
+    final rejected = _FakeAdapter((_) => _json(401, {'error': 'Unauthorized'}));
+    await expectLater(service(rejected).supportsRangeRequests('http://108.136.142.112:90/get?file=a.mp4'), throwsA(isA<UnauthorisedException>()));
+  });
+
   test('rejects uploads whose source file no longer exists', () async {
     final api = service(_FakeAdapter((_) => _json(201, {})));
     expect(

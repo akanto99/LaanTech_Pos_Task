@@ -35,9 +35,9 @@ class NetworkApiService extends BaseApiServices {
     RequestInterceptorHandler handler,
   ) async {
     if (!_publicEndpoints.contains(options.uri.toString())) {
-      final token = await _tokenManager.token;
-      if (token != null && token.isNotEmpty) {
-        options.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      final authorization = await _tokenManager.authorizationHeader;
+      if (authorization != null) {
+        options.headers[HttpHeaders.authorizationHeader] = authorization;
       }
     }
     handler.next(options);
@@ -165,6 +165,25 @@ class NetworkApiService extends BaseApiServices {
       throw const FetchDataException(
         'The connection was interrupted. The download will resume.',
       );
+    }
+  }
+
+  @override
+  Future<bool> supportsRangeRequests(String url) async {
+    final cancelToken = CancelToken();
+    try {
+      final response = await _dio.get<ResponseBody>(
+        url,
+        cancelToken: cancelToken,
+        options: Options(responseType: ResponseType.stream, headers: {HttpHeaders.rangeHeader: 'bytes=0-1'}),
+      );
+      // Only the status and headers matter; drop the body (the whole file on a 200).
+      unawaited(response.data?.stream.listen(null, onError: (_) {}).cancel());
+      return response.statusCode == HttpStatus.partialContent && response.headers.value(HttpHeaders.contentRangeHeader) != null;
+    } on DioException catch (e) {
+      throw _mapDioException(e);
+    } finally {
+      cancelToken.cancel();
     }
   }
 

@@ -16,11 +16,7 @@ import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  await SystemChrome.setPreferredOrientations(AppConfig.orientations);
   NetworkApiService.onSessionExpired = SessionExpiredService.handle;
   TransferRepository.initialize();
   await NotificationService.instance.initialize(onTap: _onNotificationTap);

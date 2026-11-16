@@ -15,6 +15,13 @@ class TokenManager {
 
   Future<String?> get token => _storage.read(key: _tokenKey);
 
+  /// `Bearer <token>` for the Authorization header, or null when logged out.
+  /// Sent only as a header: never put the token in a URL or a log line.
+  Future<String?> get authorizationHeader async {
+    final token = await this.token;
+    return token == null || token.isEmpty ? null : 'Bearer $token';
+  }
+
   Future<void> saveSession(SessionModel session) async {
     await _storage.write(key: _tokenKey, value: session.token);
     await _storage.write(key: _usernameKey, value: session.username);

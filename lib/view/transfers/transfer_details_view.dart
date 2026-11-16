@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
 import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
+import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
+import 'package:laantech_pos_task/model/video/video_player_args.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
 import 'package:provider/provider.dart';
 
@@ -99,6 +101,16 @@ class TransferDetailsView extends StatelessWidget {
                         ],
                         const SizedBox(height: 12),
                         TransferActions(task: task),
+                        if (task.canPlayVideo)
+                          FilledButton.icon(
+                            onPressed: () => Navigator.pushNamed(
+                              context,
+                              RoutesName.videoPlayer,
+                              arguments: VideoPlayerArgs(serverFileName: task.serverFileName!, title: task.fileName),
+                            ),
+                            icon: const Icon(Icons.play_arrow_rounded),
+                            label: const Text('Play video'),
+                          ),
                       ],
                     ),
                   ),

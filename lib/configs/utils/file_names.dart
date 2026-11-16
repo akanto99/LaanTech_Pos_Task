@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:laantech_pos_task/configs/res/app_config.dart';
+
 abstract final class FileNames {
   /// Returns [desired], or the first free "name (n).ext" variant of it, so an
   /// existing file is never overwritten. Only the last path segment is renamed.
@@ -15,5 +17,10 @@ abstract final class FileNames {
       candidate = '$base ($copy)$extension';
     }
     return candidate;
+  }
+
+  static bool isVideo(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    return dot > 0 && AppConfig.videoExtensions.contains(fileName.substring(dot + 1).toLowerCase());
   }
 }

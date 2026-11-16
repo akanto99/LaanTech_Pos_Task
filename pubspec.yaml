@@ -24,6 +24,7 @@ dependencies:
   connectivity_plus: ^7.1.0
   public_downloads:
     path: packages/public_downloads
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:

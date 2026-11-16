@@ -18,6 +18,10 @@ abstract class BaseApiServices {
     required CancelToken cancelToken,
   });
 
+  /// Whether [url] answers a `Range` request with `206 Partial Content`, which
+  /// is what lets a media player stream and seek without the whole file.
+  Future<bool> supportsRangeRequests(String url);
+
   /// Downloads into [savePath], resuming from its current length with an
   /// HTTP Range request when the file already exists.
   Future<void> downloadFileApi(

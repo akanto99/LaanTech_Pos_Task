@@ -7,4 +7,5 @@ class RoutesName {
   static const String download = 'download_view';
   static const String transfers = 'transfers_view';
   static const String transferDetails = 'transfer_details_view';
+  static const String videoPlayer = 'video_player_view';
 }
