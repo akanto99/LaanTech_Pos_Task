@@ -84,7 +84,7 @@ class _HomeViewState extends State<HomeView> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: ResPonsiveUi.body(child: RefreshIndicator(
         onRefresh: transfers.refresh,
         child: ListView(
           padding: ResPonsiveUi.pagePadding(context),
@@ -178,7 +178,7 @@ class _HomeViewState extends State<HomeView> {
                 ),
           ],
         ),
-      ),
+      )),
     );
   }
 }

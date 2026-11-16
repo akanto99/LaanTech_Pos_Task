@@ -52,7 +52,7 @@ class _ServerFilesScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: switch (files.status) {
+      body: ResPonsiveUi.body(child: switch (files.status) {
         Status.loading => const Center(child: CircularProgressIndicator()),
         Status.error => ErrorStateView(
           message: vm.recoversAutomatically
@@ -81,7 +81,7 @@ class _ServerFilesScreen extends StatelessWidget {
                       _ServerFileTile(file: files.data![index]),
                 ),
         ),
-      },
+      }),
     );
   }
 }

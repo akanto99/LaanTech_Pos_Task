@@ -43,6 +43,30 @@ class ResPonsiveUi extends StatelessWidget {
   /// Standard padding inside cards (about 20 dp on a typical phone).
   static EdgeInsets cardPadding(BuildContext context) => padding(context, horizontal: 0.05, vertical: 0.022);
 
+  /// Widest content column on tablets and desktops, so cards, lists and
+  /// forms stay readable instead of stretching across the screen.
+  static const double tabletContentWidth = 720;
+  static const double desktopContentWidth = 960;
+
+  /// A screen body laid out with the breakpoints: the full width on phones,
+  /// a centered column on tablets and desktops. The app bar and the
+  /// persistent transfer bar stay full width.
+  static Widget body({required Widget child}) => ResPonsiveUi(
+    mobile: child,
+    tablet: _contentColumn(child, tabletContentWidth),
+    desktop: _contentColumn(child, desktopContentWidth),
+  );
+
+  static Widget _contentColumn(Widget child, double maxWidth) => Center(
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: SizedBox.expand(child: child),
+    ),
+  );
+
+  /// Screen-relative space around a dialog (instead of Material's fixed 40 dp).
+  static EdgeInsets dialogInsets(BuildContext context) => padding(context, horizontal: 0.06, vertical: 0.03);
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(

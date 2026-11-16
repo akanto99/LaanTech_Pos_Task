@@ -28,7 +28,7 @@ class UploadView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Upload files')),
-      body: CustomScrollView(
+      body: ResPonsiveUi.body(child: CustomScrollView(
         slivers: [
           SliverPadding(
             padding: ResPonsiveUi.pagePadding(context),
@@ -93,7 +93,7 @@ class UploadView extends StatelessWidget {
               ),
             ),
         ],
-      ),
+      )),
     );
   }
 }

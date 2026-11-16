@@ -16,14 +16,18 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPlayerView extends StatelessWidget {
-  const VideoPlayerView({super.key, required this.video});
+  const VideoPlayerView({super.key, required this.video, this.createViewModel});
 
   final VideoPlayerArgs video;
+
+  /// Supplies the screen's view model in tests; it creates its own otherwise.
+  @visibleForTesting
+  final VideoPlayerViewModel Function()? createViewModel;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => VideoPlayerViewModel(video: video)..load(),
+      create: (_) => (createViewModel?.call() ?? VideoPlayerViewModel(video: video))..load(),
       child: const _VideoPlayerScreen(),
     );
   }
@@ -69,8 +73,8 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     final player = vm.player;
 
     final Widget body = switch (player.status) {
-      Status.loading => _LoadingView(downloading: vm.downloading, progress: vm.downloadProgress),
-      Status.error => ErrorStateView(message: player.message!, onRetry: vm.load),
+      Status.loading => ResPonsiveUi.body(child: _LoadingView(downloading: vm.downloading, progress: vm.downloadProgress)),
+      Status.error => ResPonsiveUi.body(child: ErrorStateView(message: player.message!, onRetry: vm.load)),
       Status.completed => _PlayerSurface(
         controller: player.data!,
         fullscreen: _fullscreen,

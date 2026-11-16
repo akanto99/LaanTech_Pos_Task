@@ -69,7 +69,7 @@ class _TransfersViewState extends State<TransfersView> {
           ),
         ],
       ),
-      body: Column(
+      body: ResPonsiveUi.body(child: Column(
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -116,7 +116,7 @@ class _TransfersViewState extends State<TransfersView> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 }

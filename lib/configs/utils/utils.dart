@@ -57,6 +57,7 @@ class Utils {
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        insetPadding: ResPonsiveUi.dialogInsets(dialogContext),
         title: Text(title, style: AppTextStyles.textSize18(dialogContext)),
         content: Text(message, style: AppTextStyles.textSize14(dialogContext)),
         actions: [

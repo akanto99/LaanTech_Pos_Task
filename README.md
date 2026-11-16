@@ -143,7 +143,10 @@ Deliberate changes:
 
 The app uses the project's own responsive utilities; no second system was added.
 
-- **`lib/configs/responsive/responsive_ui.dart` (`ResPonsiveUi`).** Breakpoints (`isMobile` below 800 dp, `isTablet`, `isDesktop`) and the `mobile` / `tablet` / `desktop` builder. It also provides screen-fraction helpers: `width(context, f)`, `height(context, f)`, `padding(context, horizontal:, vertical:)`, `paddingLTRB(...)`, `pagePadding` (about 16 dp on a 393 × 852 phone) and `cardPadding` (about 20 dp).
+- **`lib/configs/responsive/responsive_ui.dart` (`ResPonsiveUi`).** Breakpoints (`isMobile` below 800 dp, `isTablet`, `isDesktop`) and the `mobile` / `tablet` / `desktop` builder.
+  - **Every screen body goes through that builder** via `ResPonsiveUi.body(child: …)`: full width on phones, a centered 720 dp column on tablets and 960 dp on desktop. The app bar and the persistent transfer bar stay full width.
+  - Screens: splash, login and register (through `AuthFormLayout`, which also keeps the form at 440 dp), Home, Upload, Server files, Transfer center, Transfer details, and the video player's loading and error states. The video surface itself stays full screen.
+  - Dialogs (`Utils.confirm`, session expired) use `ResPonsiveUi.dialogInsets` instead of Material's fixed 40 dp insets. The app has no bottom sheets. It also provides screen-fraction helpers: `width(context, f)`, `height(context, f)`, `padding(context, horizontal:, vertical:)`, `paddingLTRB(...)`, `pagePadding` (about 16 dp on a 393 × 852 phone) and `cardPadding` (about 20 dp).
 - **`lib/configs/res/sizedbox_spaccing.dart` (`SizedboxSpaccing`).** Gaps as a fraction of the screen: `width01` to `width035` follow the width, and `height005` to `height04` follow the height.
 - **Rule.** Horizontal values scale with the screen width and vertical values with the screen height.
   - Both read `MediaQuery.sizeOf`, so opening the keyboard doesn't rebuild them.
@@ -158,9 +161,9 @@ The app uses the project's own responsive utilities; no second system was added.
   - a transfer's status chip and size wrap onto two lines instead of overflowing (`TransferTile`, up to 127 px);
   - dashboard tiles grow with the text size, and their titles and stats stay on one line;
   - empty and error states scroll on short screens.
-- **Audit.** `test/view/responsive_layout_test.dart` renders every screen with long realistic content and fails on any overflow:
-  - **Screens:** splash, login, register, dashboard, Upload (with and without transfers), Server files (list, empty, error), Transfer center, Transfer details (running, failed, video), a confirmation dialog, and the persistent transfer bar.
-  - **9 configurations:** 320 × 568 (also at 1.3× text), 393 × 852, 430 × 932 (also at 1.5× text), 852 × 393 landscape (also at 1.3× text), 568 × 320 landscape and an 800 × 1280 tablet, at densities from 2× to 3.5×.
+- **Audit.** `test/view/responsive_layout_test.dart` renders every screen with long realistic content. It fails on any overflow, if a screen body doesn't use `ResPonsiveUi`, or if a card is wider than the tablet/desktop content column:
+  - **Screens:** splash, login, register, dashboard, Upload (with and without transfers), Server files (list, empty, error), Transfer center, Transfer details (running, failed, video), the video player (loading, error), the confirmation and session-expired dialogs, and the persistent transfer bar.
+  - **10 configurations:** 320 × 568 (also at 1.3× text), 393 × 852, 430 × 932 (also at 1.5× text), 852 × 393 landscape (also at 1.3× text), 568 × 320 landscape, an 800 × 1280 tablet and a 1280 × 800 desktop / large tablet, at densities from 1.5× to 3.5×.
 
 ## 5. Folder structure
 
@@ -543,7 +546,7 @@ For a smaller APK on a single-ABI device or emulator: `flutter build apk --debug
 
 ```bash
 flutter analyze
-flutter test                      # 231 unit and widget tests
+flutter test                      # 275 unit and widget tests
 ```
 
 | Suite | Covers |
@@ -555,7 +558,7 @@ flutter test                      # 231 unit and widget tests
 | `test/view_model/*` | `AuthViewModel` (login/register/logout/errors), `TransferViewModel` (snapshot mirroring, stats, upload selection, download enqueue, controls), `ServerFilesViewModel` (reload on reconnect, no polling offline, backoff when connected but unreachable, retry budget, no retry for 4xx, single in-flight request, silent refresh keeps data, dispose cleanup), `VideoPlayerViewModel` (authenticated stream, download-first when Range is unsupported or the stream fails, unsupported format, session errors, progress, dispose) |
 | `test/repository/*` | `AuthRepository` (form-encoded credentials, session persistence, logout), `VideoRepository` (token only in headers, no-Range fallback, missing session, cached fallback copy) |
 | `test/view/*`, `test/widgets/*` | Splash routing (no/expired/valid session), login validation, `TransferTile` states and controls, cancel confirmation, video tap → player, details button, non-video tap → details, **only the four network labels, progress color per label (normal / amber / red), compact KB/s and MB/s speed, percentage unchanged by health, the same labels in notifications** |
-| `test/view/responsive_layout_test.dart` | Every screen (splash, login, register, dashboard, upload, server files list/empty/error, transfer center, transfer details running/failed/video, confirm dialog, persistent bar) on 9 screen configurations; any overflow fails the test |
+| `test/view/responsive_layout_test.dart` | Every screen (splash, login, register, dashboard, upload, server files list/empty/error, transfer center, transfer details running/failed/video, video player loading/error, confirm and session-expired dialogs, persistent bar) on 10 screen configurations; fails on any overflow, on a body not built with `ResPonsiveUi`, or on a card wider than the tablet/desktop column |
 
 **Integration test (live server, Android device/emulator).** It logs in through the UI, uploads through the foreground service, downloads from the Server files screen, and compares the bytes. Use your own account; credentials are passed at run time and never stored:
 
@@ -620,9 +623,9 @@ One finding from this run is recorded under [Known limitations](#21-known-limita
 | 30 MB upload | *Connection Lost* at each outage, last progress held. On reconnect it restarted from 0% (shown as such), with data again within 0.18–0.43 s. Completed, and the server stored it **exactly once** (one `POST complete` despite five attempts). |
 | Android network handover | Two upload attempts were also reset with no outage, each about 34 s after reconnecting. Logcat shows `handleLingerComplete for [CELLULAR]` at exactly those times. Mobile data came back first, the upload started on it, then Android switched to Wi-Fi and tore mobile down after its 30 s linger, destroying the socket. The app recovered at once (in under 0.3 s); see [Known limitations](#21-known-limitations). |
 
-**Responsive layout.** The audit in [Responsive UI and spacing](#responsive-ui-and-spacing) passes: 126 renders (14 screens and states × 9 configurations), with no overflow. Layout was verified by widget tests, not by screenshots on physical phones.
+**Responsive layout.** The audit in [Responsive UI and spacing](#responsive-ui-and-spacing) passes: 170 renders (17 screens and states × 10 configurations), with no overflow, every body through `ResPonsiveUi` and no card wider than the content column. Layout was verified by widget tests, not by screenshots on physical phones.
 
-**Final checks:** `flutter pub get`, `flutter analyze` (no issues), `flutter test` (231 passed) and `flutter build apk --debug` (success).
+**Final checks:** `flutter pub get`, `flutter analyze` (no issues), `flutter test` (275 passed) and `flutter build apk --debug` (success).
 
 **Still to test manually on a device, with a real account on the live server:**
 
@@ -658,7 +661,7 @@ Not verified on a physical device: OEM-specific battery killers, the Android 15 
 - After a short outage, a connection that died silently is detected 3 s after the network returns (`AppConfig.reconnectStallAfter`). A shorter threshold would risk aborting connections that survived the blip.
 - **Android network handover.** When Wi-Fi and mobile data come back together, a transfer can start on mobile data. Android then moves the default network to Wi-Fi and tears mobile data down 30 s later, which kills that connection (seen in the emulator logs as `handleLingerComplete`). A download resumes from its byte offset within a second. An upload restarts from 0%, because the backend can't resume uploads.
 - Network health was verified on an emulator, with the engine in the test's isolate and a local server. It was not verified inside the foreground-service engine on a physical device, nor against the live server (no test account).
-- The responsive layout is verified by the widget-test audit (9 screen configurations), not by screenshots on physical phones. Text follows the user's font size; very large settings beyond 1.5× were not audited.
+- The responsive layout is verified by the widget-test audit (10 screen configurations), not by screenshots on physical phones or tablets. Text follows the user's font size; very large settings beyond 1.5× were not audited.
 - Transfer history is stored per device and cleared on logout.
 - iOS background execution is not implemented.
 - The Android application ID is still the template's `com.example.laantech_pos_task`.

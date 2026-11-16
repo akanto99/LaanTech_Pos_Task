@@ -56,7 +56,7 @@ class TransferDetailsView extends StatelessWidget {
             ),
         ],
       ),
-      body: task == null
+      body: ResPonsiveUi.body(child: task == null
           ? const EmptyStateView(
               icon: Icons.history_toggle_off_rounded,
               title: 'Transfer not found',
@@ -146,7 +146,7 @@ class TransferDetailsView extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
+            )),
     );
   }
 }

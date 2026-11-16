@@ -22,7 +22,7 @@ class AuthFormLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
+      body: ResPonsiveUi.body(child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: ResPonsiveUi.padding(context, horizontal: 0.05, vertical: 0.023),
@@ -67,7 +67,7 @@ class AuthFormLayout extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 }
