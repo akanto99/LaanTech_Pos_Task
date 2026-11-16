@@ -317,13 +317,4 @@ void main() {
     expect(error, isA<FetchDataException>().having((e) => e is NetworkException, 'is network', isFalse));
   });
 
-  test('server reachability: any HTTP answer is reachable, a socket error is not', () async {
-    final notFound = _FakeAdapter((_) => _json(404, {}));
-    expect(await service(notFound).isServerReachable(), isTrue);
-    expect(notFound.requests.single.method, 'HEAD');
-    expect(notFound.requests.single.headers.containsKey('Authorization'), isFalse, reason: 'the probe carries no token');
-
-    final down = _FakeAdapter((_) => throw const SocketException('Connection refused'));
-    expect(await service(down).isServerReachable(), isFalse);
-  });
 }

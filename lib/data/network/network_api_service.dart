@@ -27,7 +27,6 @@ class NetworkApiService extends BaseApiServices {
   static const _publicEndpoints = {
     AppUrl.token,
     AppUrl.register,
-    AppUrl.baseUrl,
   };
   static const _stalled = 'stalled';
   static const _stalledError = NetworkException(
@@ -199,28 +198,6 @@ class NetworkApiService extends BaseApiServices {
       throw const NetworkException(
         'The connection was interrupted. The download will resume.',
       );
-    }
-  }
-
-  @override
-  Future<bool> isServerReachable() async {
-    final cancelToken = CancelToken();
-    final timer = Timer(AppConfig.reachabilityTimeout, cancelToken.cancel);
-    try {
-      // Any HTTP answer, even an error status, proves the server is reachable.
-      await _dio.head<void>(
-        AppUrl.baseUrl,
-        cancelToken: cancelToken,
-        options: Options(
-          validateStatus: (_) => true,
-          receiveTimeout: AppConfig.reachabilityTimeout,
-        ),
-      );
-      return true;
-    } on DioException {
-      return false;
-    } finally {
-      timer.cancel();
     }
   }
 

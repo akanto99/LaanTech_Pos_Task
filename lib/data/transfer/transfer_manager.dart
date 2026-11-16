@@ -28,10 +28,12 @@ abstract class TransferNotifier {
 ///
 /// Network health: each running attempt is measured by a [ThroughputTracker]
 /// (good / poor / stalled) and the shared [TransferNetworkMonitor] reports
-/// connectivity. When the network is lost nothing is sent until it returns
-/// and the server answers; then the transfer is retried with exponential
-/// backoff. Downloads resume with HTTP Range; uploads restart from zero
-/// because the server only accepts a single multipart request.
+/// connectivity. When the network is lost nothing is sent until it returns;
+/// then the transfer is retried at once (the retry is the reachability
+/// check). Only consecutive failures that move no data back off
+/// exponentially, and any connectivity change cuts that backoff short.
+/// Downloads resume with HTTP Range; uploads restart from zero because the
+/// server only accepts a single multipart request.
 class TransferManager {
   TransferManager({
     required TransferStore store,
@@ -43,6 +45,7 @@ class TransferManager {
     this.retryBaseDelay = AppConfig.retryBaseDelay,
     this.healthTick = AppConfig.networkHealthTick,
     this.offlineAbortAfter = AppConfig.offlineAbortAfter,
+    this.reconnectStallAfter = AppConfig.reconnectStallAfter,
     this.networkWaitLimit = AppConfig.networkWaitLimit,
     DateTime Function()? clock,
   }) : _store = store,
@@ -63,6 +66,7 @@ class TransferManager {
   final Duration retryBaseDelay;
   final Duration healthTick;
   final Duration offlineAbortAfter;
+  final Duration reconnectStallAfter;
   final Duration networkWaitLimit;
 
   final _tasks = <String, TransferTask>{};
@@ -81,6 +85,9 @@ class TransferManager {
 
   /// Requests aborted because the device went offline and data stopped.
   final _networkAborts = <String>{};
+
+  /// In-flight requests that were running when connectivity was lost.
+  final _crossedLoss = <String>{};
   Timer? _healthTimer;
   bool _shutDown = false;
   StreamSubscription<bool>? _networkSubscription;
@@ -211,14 +218,20 @@ class TransferManager {
 
   Future<void> _run(String id) async {
     final run = _runs[id] = Object();
+    // Budget for server errors (and for uploads that keep dropping while
+    // online, since each retry re-sends the whole file).
     var attempt = 0;
+    // Consecutive network failures that moved no data; drives the backoff.
+    var networkFailures = 0;
+    // When the current network trouble began; reset whenever data moves.
+    DateTime? troubleSince;
     var resumed = false;
     _update(_tasks[id]!.copyWith(status: TransferStatus.running, clearError: true, networkHealth: NetworkHealth.good, bytesPerSecond: 0));
 
     while (_isCurrent(id, run)) {
       // Never send a request while there is no usable network.
       if (!_online) {
-        if (await _recover(id, run) == null) break;
+        if (await _recover(id, run, deadline: _clock().add(networkWaitLimit)) == null) break;
         resumed = true;
       }
       final task = _tasks[id]!;
@@ -229,7 +242,8 @@ class TransferManager {
         task.copyWith(
           // An upload restarts from zero; it is never shown as resuming mid-file.
           transferredBytes: task.isUpload ? 0 : null,
-          networkHealth: resumed ? NetworkHealth.resumed : NetworkHealth.good,
+          // A retry shows "reconnecting" until its first bytes arrive.
+          networkHealth: resumed ? NetworkHealth.reconnecting : NetworkHealth.good,
           bytesPerSecond: 0,
           clearError: true,
         ),
@@ -241,6 +255,7 @@ class TransferManager {
         _endAttempt(id);
         break;
       } catch (error) {
+        final moved = _trackers[id]?.moved ?? false;
         _endAttempt(id);
         final networkAbort = _networkAborts.remove(id);
         final stop = _stopRequests.remove(id);
@@ -260,31 +275,50 @@ class TransferManager {
             : error is AppException
             ? error
             : const AppException('An unexpected error occurred.');
+        if (exception is NetworkException) {
+          // A connection that was delivering data is retried at once
+          // (downloads resume with Range). Only consecutive failures that
+          // moved nothing back off, so an unreachable server is not hammered.
+          if (moved) {
+            networkFailures = 0;
+            troubleSince = null;
+          }
+          troubleSince ??= _clock();
+          // Uploads restart from zero, so a link that keeps dropping
+          // mid-upload while online uses the retry budget.
+          final charged = current.isUpload && moved && _online;
+          if (charged) {
+            if (attempt >= AppConfig.maxAutoRetries) {
+              _fail(current, exception.message);
+              break;
+            }
+            attempt++;
+          }
+          final delay = _online && networkFailures > 0 ? _backoff(networkFailures - 1) : Duration.zero;
+          networkFailures++;
+          final wasOffline = await _recover(id, run, delay: delay, deadline: troubleSince.add(networkWaitLimit));
+          if (wasOffline == null) break;
+          if (wasOffline) {
+            // The network came back: try at once. The socket error can arrive
+            // before the offline event, so a charged attempt is refunded.
+            networkFailures = 0;
+            if (charged) attempt--;
+          }
+          resumed = true;
+          continue;
+        }
+
         // Downloads resume from their partial file, so an attempt that made
         // progress resets the budget; only consecutive dead attempts count.
         if (!current.isUpload && current.transferredBytes > task.transferredBytes) {
           attempt = 0;
         }
-        final networkFailure = exception is NetworkException;
-        // Failures caused by being offline do not use up the retry budget:
-        // the transfer simply waits for the network.
-        final offlineFailure = networkFailure && !_online;
-        if (!exception.retryable || (!offlineFailure && attempt >= AppConfig.maxAutoRetries)) {
+        if (!exception.retryable || attempt >= AppConfig.maxAutoRetries) {
           _fail(current, exception.message);
           break;
         }
-        final delay = offlineFailure ? Duration.zero : _backoff(attempt);
-        if (!offlineFailure) attempt++;
-
-        if (networkFailure) {
-          final wasOffline = await _recover(id, run, delay: delay);
-          if (wasOffline == null) break;
-          // The socket error can arrive before the connectivity event; if
-          // recovery had to wait for the network, the attempt is refunded.
-          if (wasOffline && !offlineFailure) attempt--;
-          resumed = true;
-          continue;
-        }
+        final delay = _backoff(attempt);
+        attempt++;
         _update(
           current.copyWith(
             bytesPerSecond: 0,
@@ -305,6 +339,7 @@ class TransferManager {
   void _endAttempt(String id) {
     _cancelTokens.remove(id);
     _trackers.remove(id);
+    _crossedLoss.remove(id);
   }
 
   void _fail(TransferTask task, String message) =>
@@ -315,54 +350,42 @@ class TransferManager {
     return delay > AppConfig.maxRetryDelay ? AppConfig.maxRetryDelay : delay;
   }
 
-  /// Waits until the device is online *and* the server answers, keeping the
-  /// last confirmed progress on screen. Offline waiting is event driven (no
-  /// requests); reachability checks back off exponentially. Returns false
-  /// null when the run should stop (paused, cancelled, superseded or timed
-  /// out); otherwise whether the device had to wait for the network.
-  Future<bool?> _recover(String id, Object run, {Duration delay = Duration.zero}) async {
-    final deadline = _clock().add(networkWaitLimit);
-    var checks = 0;
+  /// Decides when a transfer that lost its connection is retried, keeping
+  /// the last confirmed progress on screen. Offline, it waits for the
+  /// network (event driven, no requests). Online, it waits [delay], which
+  /// any connectivity change cuts short, so a reconnection is never slept
+  /// through. The retried request itself then checks the server. Returns
+  /// null when the run should stop (paused, cancelled, superseded or the
+  /// network stayed unusable past [deadline]); otherwise whether the device
+  /// had to wait for the network.
+  Future<bool?> _recover(String id, Object run, {Duration delay = Duration.zero, required DateTime deadline}) async {
     var wasOffline = false;
-    if (delay > Duration.zero) {
-      _setWaiting(id, _online ? NetworkHealth.reconnecting : NetworkHealth.offline);
-      if (!await _sleep(id, run, delay)) return null;
+    if (delay > Duration.zero && _online) {
+      _setWaiting(id, NetworkHealth.reconnecting);
+      await _wait(id, delay, until: _network?.nextChange());
     }
-    while (_isCurrent(id, run)) {
+    while (_isCurrent(id, run) && !_online) {
       final remaining = deadline.difference(_clock());
-      if (remaining <= Duration.zero) {
-        _giveUp(id);
-        return null;
-      }
-      if (!_online) {
-        wasOffline = true;
-        _setWaiting(id, NetworkHealth.offline);
-        await _wait(id, remaining, until: _network!.whenOnline());
-        continue;
-      }
-      _setWaiting(id, NetworkHealth.reconnecting, networkBack: wasOffline);
-      if (await _network?.checkServer() ?? true) return _isCurrent(id, run) ? wasOffline : null;
-      if (!await _sleep(id, run, _backoff(checks++))) return null;
+      if (remaining <= Duration.zero) break;
+      wasOffline = true;
+      _setWaiting(id, NetworkHealth.offline);
+      await _wait(id, remaining, until: _network!.whenOnline());
     }
-    return null;
+    if (!_isCurrent(id, run)) return null;
+    if (!_online || (!wasOffline && !_clock().isBefore(deadline))) {
+      _giveUp(id);
+      return null;
+    }
+    _setWaiting(id, NetworkHealth.reconnecting);
+    return wasOffline;
   }
 
-  void _setWaiting(String id, NetworkHealth health, {bool networkBack = false}) {
+  /// Shows a waiting state. The network status is the health indicator
+  /// itself, so no explanatory message is stored.
+  void _setWaiting(String id, NetworkHealth health) {
     final task = _tasks[id];
-    if (task == null) return;
-    final String message;
-    if (health == NetworkHealth.offline) {
-      message = task.isUpload
-          ? 'Connection lost. Waiting for network. The server cannot resume uploads, so this upload will restart from the beginning.'
-          : 'Connection lost. Waiting for network. The download will resume from where it stopped.';
-    } else {
-      // Before connectivity has reported anything, the cause is unknown: the
-      // socket error often arrives before the "offline" event.
-      final prefix = networkBack ? 'Network is back.' : 'Connection interrupted.';
-      message = task.isUpload ? '$prefix Checking the server before restarting the upload…' : '$prefix Checking the server before resuming…';
-    }
-    if (task.networkHealth == health && task.error == message) return;
-    _update(task.copyWith(networkHealth: health, bytesPerSecond: 0, error: message));
+    if (task == null || (task.networkHealth == health && task.error == null && task.bytesPerSecond == 0)) return;
+    _update(task.copyWith(networkHealth: health, bytesPerSecond: 0, clearError: true));
   }
 
   /// The network stayed unusable for [networkWaitLimit]. A download is
@@ -372,9 +395,9 @@ class TransferManager {
     if (task == null) return;
     _runs.remove(id);
     if (task.isUpload) {
-      _fail(task, 'Connection lost for too long. Retry to upload the file again from the beginning.');
+      _fail(task, 'Connection lost. Retry to upload again.');
     } else {
-      _update(task.copyWith(status: TransferStatus.paused, networkHealth: NetworkHealth.offline, bytesPerSecond: 0, error: 'Paused due to connection loss. Resume when you are back online.'));
+      _update(task.copyWith(status: TransferStatus.paused, networkHealth: NetworkHealth.offline, bytesPerSecond: 0, error: 'Paused: connection lost.'));
     }
   }
 
@@ -404,13 +427,36 @@ class TransferManager {
   void _wake(String id) => _wakers.remove(id)?.complete();
 
   void _onConnectivityChanged(bool online) {
-    if (online) return; // Waiting run loops are woken by whenOnline().
-    // Show the loss immediately; the request itself is aborted by the health
-    // check only if data also stops, so brief blips do not kill a transfer.
-    for (final id in _cancelTokens.keys) {
-      final task = _tasks[id];
-      if (task != null) _update(task.copyWith(networkHealth: NetworkHealth.offline, bytesPerSecond: 0));
+    // Waiting run loops are woken by whenOnline() / nextChange().
+    if (!online) {
+      // Show the loss immediately; the request itself is aborted by the
+      // health check only if data also stops, so brief blips do not kill it.
+      for (final id in _cancelTokens.keys) {
+        _crossedLoss.add(id);
+        final task = _tasks[id];
+        if (task != null) _update(task.copyWith(networkHealth: NetworkHealth.offline, bytesPerSecond: 0));
+      }
+      return;
     }
+    for (final id in _cancelTokens.keys.toList()) {
+      _abortIfDeadAfterLoss(id);
+    }
+  }
+
+  /// A request that was in flight when the network was lost is usually tied
+  /// to a connection that never delivers again (a few buffered bytes may
+  /// still trickle in). Left alone it would hang until the idle timeout, so
+  /// once the device is online and the request has been idle for
+  /// [reconnectStallAfter] it is aborted and retried on the new connection
+  /// (downloads resume with Range). A request whose data keeps flowing
+  /// survived the blip and is left alone.
+  void _abortIfDeadAfterLoss(String id) {
+    final tracker = _trackers[id];
+    final token = _cancelTokens[id];
+    if (!_online || tracker == null || token == null || !_crossedLoss.contains(id)) return;
+    if (tracker.idle < reconnectStallAfter) return;
+    _networkAborts.add(id);
+    token.cancel('dead after reconnection');
   }
 
   void _startHealthTimer() => _healthTimer ??= Timer.periodic(healthTick, (_) => _checkHealth());
@@ -439,6 +485,7 @@ class TransferManager {
           entry.value.cancel('offline');
         }
       } else {
+        _abortIfDeadAfterLoss(id);
         final finished = task.isUpload && task.totalBytes > 0 && task.transferredBytes >= task.totalBytes;
         health = tracker.classify(task.networkHealth, finished: finished);
         speed = health == NetworkHealth.stalled ? 0 : tracker.bytesPerSecond;
@@ -554,8 +601,11 @@ class TransferManager {
   void _progress(String id, int transferred, {int? total}) {
     final task = _tasks[id];
     if (task == null || task.status != TransferStatus.running) return;
-    _trackers[id]?.record(transferred);
-    _update(task.copyWith(transferredBytes: transferred, totalBytes: total));
+    final tracker = _trackers[id]?..record(transferred);
+    // The first bytes after a reconnection end "reconnecting" at once rather
+    // than on the next health tick.
+    final health = task.networkHealth == NetworkHealth.reconnecting && (tracker?.moved ?? false) ? tracker!.classify(task.networkHealth) : null;
+    _update(task.copyWith(transferredBytes: transferred, totalBytes: total, networkHealth: health));
   }
 
   void _update(TransferTask task) {

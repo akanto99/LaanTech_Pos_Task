@@ -17,7 +17,7 @@ class _BrokenConnectivity implements ConnectivityService {
 void main() {
   test('tracks connectivity with a single listener', () async {
     final connectivity = FakeConnectivityService()..online = false;
-    final monitor = TransferNetworkMonitor(connectivity: connectivity, serverReachable: () async => true);
+    final monitor = TransferNetworkMonitor(connectivity: connectivity);
     await monitor.start();
     await monitor.start();
 
@@ -36,34 +36,28 @@ void main() {
     expect(connectivity.hasListener, isFalse);
   });
 
-  test('concurrent reachability checks share one request', () async {
-    var probes = 0;
-    final gate = Completer<bool>();
-    final monitor = TransferNetworkMonitor(
-      connectivity: FakeConnectivityService(),
-      serverReachable: () {
-        probes++;
-        return gate.future;
-      },
-    );
+  test('nextChange completes on the next connectivity change, or on dispose', () async {
+    final connectivity = FakeConnectivityService();
+    final monitor = TransferNetworkMonitor(connectivity: connectivity);
+    await monitor.start();
 
-    final results = [monitor.checkServer(), monitor.checkServer(), monitor.checkServer()];
-    gate.complete(true);
-    expect(await Future.wait(results), [true, true, true]);
-    expect(probes, 1);
+    var changed = false;
+    unawaited(monitor.nextChange().then((_) => changed = true));
+    await pumpEventQueue();
+    expect(changed, isFalse);
+    connectivity.emit(false);
+    await pumpEventQueue();
+    expect(changed, isTrue);
 
-    // A later check sends a new request.
-    await monitor.checkServer();
-    expect(probes, 2);
-  });
-
-  test('a failing probe counts as unreachable', () async {
-    final monitor = TransferNetworkMonitor(connectivity: FakeConnectivityService(), serverReachable: () => Future.error(Exception('boom')));
-    expect(await monitor.checkServer(), isFalse);
+    var released = false;
+    unawaited(monitor.nextChange().then((_) => released = true));
+    await monitor.dispose();
+    await pumpEventQueue();
+    expect(released, isTrue, reason: 'waiters are never left hanging');
   });
 
   test('without a connectivity plugin it assumes online', () async {
-    final monitor = TransferNetworkMonitor(connectivity: _BrokenConnectivity(), serverReachable: () async => true);
+    final monitor = TransferNetworkMonitor(connectivity: _BrokenConnectivity());
     await monitor.start();
     expect(monitor.isOnline, isTrue);
   });

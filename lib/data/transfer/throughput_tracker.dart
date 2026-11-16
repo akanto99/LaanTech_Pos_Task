@@ -19,11 +19,14 @@ class ThroughputTracker {
 
   final DateTime Function() _clock;
 
-  /// The attempt follows a connection loss, so it starts as [NetworkHealth.resumed].
+  /// The attempt follows a connection loss: it shows
+  /// [NetworkHealth.reconnecting] until its first bytes move, then
+  /// [NetworkHealth.resumed] for a moment.
   final bool resumed;
 
   late final DateTime _startedAt;
   late DateTime _lastChangeAt;
+  bool _moved = false;
   final _samples = Queue<({DateTime at, int bytes})>();
 
   int get _bytes => _samples.last.bytes;
@@ -31,9 +34,18 @@ class ThroughputTracker {
   /// How long no new bytes have been transferred.
   Duration get idle => _clock().difference(_lastChangeAt);
 
+  /// When bytes last moved (or when the attempt started, if none have).
+  DateTime get lastProgressAt => _lastChangeAt;
+
+  /// Whether this attempt has transferred any bytes.
+  bool get moved => _moved;
+
   void record(int bytes) {
     final now = _clock();
-    if (bytes != _bytes) _lastChangeAt = now;
+    if (bytes != _bytes) {
+      _lastChangeAt = now;
+      _moved = true;
+    }
     _samples.add((at: now, bytes: bytes));
     _prune(now);
   }
@@ -55,6 +67,7 @@ class ThroughputTracker {
   NetworkHealth classify(NetworkHealth current, {bool finished = false}) {
     final now = _clock();
     final sinceStart = now.difference(_startedAt);
+    if (resumed && !_moved) return NetworkHealth.reconnecting;
     final fallback = resumed && sinceStart < AppConfig.resumedNoticeDuration ? NetworkHealth.resumed : NetworkHealth.good;
     if (finished) return current == NetworkHealth.stalled ? fallback : current;
     if (idle >= AppConfig.stallWarningAfter) return NetworkHealth.stalled;

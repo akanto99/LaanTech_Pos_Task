@@ -41,7 +41,7 @@ class TransferTaskHandler extends TaskHandler {
     await NotificationService.instance.initialize();
     final api = NetworkApiService();
     // The isolate's only connectivity listener, shared by every transfer.
-    _network = TransferNetworkMonitor(connectivity: ConnectivityService(), serverReachable: api.isServerReachable);
+    _network = TransferNetworkMonitor(connectivity: ConnectivityService());
     _manager = TransferManager(
       store: TransferStore(),
       apiServices: api,

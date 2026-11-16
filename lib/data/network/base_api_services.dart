@@ -37,9 +37,4 @@ abstract class BaseApiServices {
     String? expectedEtag,
     void Function(String etag)? onEtag,
   });
-
-  /// Whether the API server answers at all (any HTTP status counts). Used
-  /// after the network returns, because a connected Wi-Fi or mobile network
-  /// does not prove the server can be reached.
-  Future<bool> isServerReachable();
 }

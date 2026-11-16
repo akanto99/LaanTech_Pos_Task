@@ -22,10 +22,8 @@ class _ScriptedApi implements BaseApiServices {
   final uploads = <_Attempt>[];
   final downloads = <_Attempt>[];
   List<Map<String, Object?>> serverFiles = [];
-  bool reachable = true;
   int uploadCalls = 0;
   int downloadCalls = 0;
-  int reachabilityChecks = 0;
   int listCalls = 0;
 
   @override
@@ -45,12 +43,6 @@ class _ScriptedApi implements BaseApiServices {
   }) async {
     downloadCalls++;
     await downloads.removeAt(0)(onProgress, cancelToken, savePath);
-  }
-
-  @override
-  Future<bool> isServerReachable() async {
-    reachabilityChecks++;
-    return reachable;
   }
 
   @override
@@ -98,16 +90,30 @@ void main() {
   late TransferManager manager;
   late List<TransferTask> history;
 
-  TransferManager create({Duration networkWaitLimit = const Duration(minutes: 1)}) => TransferManager(
+  TransferManager create({
+    Duration networkWaitLimit = const Duration(minutes: 1),
+    Duration retryBaseDelay = const Duration(milliseconds: 1),
+    Duration offlineAbortAfter = const Duration(milliseconds: 30),
+    Duration reconnectStallAfter = const Duration(milliseconds: 30),
+  }) => TransferManager(
     store: TransferStore(dataDirectory: () async => root, temporaryDirectory: () async => Directory('${root.path}/cache')),
     apiServices: api,
     downloadStorage: _Storage(Directory('${root.path}/public')),
     networkMonitor: monitor,
-    retryBaseDelay: const Duration(milliseconds: 1),
+    retryBaseDelay: retryBaseDelay,
     healthTick: const Duration(milliseconds: 5),
-    offlineAbortAfter: const Duration(milliseconds: 30),
+    offlineAbortAfter: offlineAbortAfter,
+    reconnectStallAfter: reconnectStallAfter,
     networkWaitLimit: networkWaitLimit,
   );
+
+  /// Replaces the manager with one using slow timings, to prove recovery
+  /// does not wait for them.
+  Future<void> recreate({Duration retryBaseDelay = const Duration(minutes: 10), Duration offlineAbortAfter = const Duration(minutes: 10)}) async {
+    await manager.shutdown();
+    manager = create(retryBaseDelay: retryBaseDelay, offlineAbortAfter: offlineAbortAfter);
+    await manager.start();
+  }
 
   TransferTask task(String id) => manager.tasks.firstWhere((t) => t.id == id);
 
@@ -150,7 +156,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('recovery');
     api = _ScriptedApi();
     connectivity = FakeConnectivityService();
-    monitor = TransferNetworkMonitor(connectivity: connectivity, serverReachable: api.isServerReachable);
+    monitor = TransferNetworkMonitor(connectivity: connectivity);
     history = [];
     manager = create();
     await manager.start();
@@ -175,30 +181,98 @@ void main() {
     );
   }
 
-  test('offline: nothing is sent; it resumes only once the server answers', () async {
+  test('offline: nothing is sent; the request goes out as soon as the network returns', () async {
+    await recreate();
     connectivity.emit(false);
     await pumpEventQueue();
-    api.reachable = false;
     api.downloads.add((onProgress, _, path) => _write(path!, List.filled(10, 1), onProgress));
 
     await enqueue(download('d1'));
     await until(() => task('d1').networkHealth == NetworkHealth.offline, reason: 'offline');
     expect(task('d1').status, TransferStatus.running, reason: 'stays visible as an active transfer');
-    expect(task('d1').error, contains('Waiting for network'));
+    expect(task('d1').error, isNull, reason: 'the status indicator is the only message');
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(api.downloadCalls, 0, reason: 'no requests while there is no network');
-    expect(api.reachabilityChecks, 0, reason: 'no reachability checks while offline either');
 
-    // Connected, but the API is not reachable yet: keep checking with backoff.
+    // No probe and no backoff (10 minutes here) before the retry.
     connectivity.emit(true);
-    await until(() => api.reachabilityChecks >= 3, reason: 'reachability checks');
-    expect(task('d1').networkHealth, NetworkHealth.reconnecting);
-    expect(api.downloadCalls, 0);
-
-    api.reachable = true;
     await until(() => task('d1').status == TransferStatus.completed, reason: 'completion');
     expect(api.downloadCalls, 1);
     expect(File(task('d1').localPath).lengthSync(), 10);
+  });
+
+  test('online but unreachable: retries back off, and a network change cuts the backoff short', () async {
+    await recreate(); // 10-minute base backoff
+    for (var i = 0; i < 2; i++) {
+      api.downloads.add((_, _, _) async => throw const NetworkException('Connection refused.'));
+    }
+    api.downloads.add((onProgress, _, path) => _write(path!, List.filled(10, 1), onProgress));
+
+    await enqueue(download('d1'));
+    // The first failure retries at once; the second waits for the backoff.
+    await until(() => api.downloadCalls == 2 && task('d1').networkHealth == NetworkHealth.reconnecting, reason: 'backing off');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(api.downloadCalls, 2, reason: 'consecutive failures that move no data back off');
+
+    // Switching networks (e.g. Wi-Fi to mobile and back) retries immediately.
+    connectivity.emit(false);
+    await pumpEventQueue();
+    connectivity.emit(true);
+    await until(() => task('d1').status == TransferStatus.completed, reason: 'completion');
+    expect(api.downloadCalls, 3);
+  });
+
+  test('short outage: a dead request is aborted on reconnection and resumes at once from its byte offset', () async {
+    // Idle timeout, offline abort and backoff are all 10 minutes here: the
+    // resume must not wait for any of them.
+    await recreate();
+    final drained = Completer<void>();
+    api.downloads
+      ..add((onProgress, token, path) async {
+        await _write(path!, List.filled(3, 1), onProgress);
+        // Bytes already buffered are still read after the loss is reported…
+        await drained.future;
+        await _write(path, List.filled(1, 1), onProgress);
+        return _hangUntilCancelled(token); // …then the old connection never delivers again
+      })
+      ..add((onProgress, _, path) async {
+        expect(File(path!).lengthSync(), 4, reason: 'Range resume from the kept partial file');
+        await _write(path, List.filled(6, 2), onProgress);
+        return null;
+      });
+
+    await enqueue(download('d1'));
+    await until(() => task('d1').transferredBytes == 3, reason: 'first bytes');
+    connectivity.emit(false);
+    await until(() => task('d1').networkHealth == NetworkHealth.offline, reason: 'offline shown');
+    drained.complete();
+    await until(() => task('d1').transferredBytes == 4, reason: 'buffered bytes');
+    connectivity.emit(true);
+    await until(() => task('d1').status == TransferStatus.completed, reason: 'prompt resume');
+    expect(api.downloadCalls, 2);
+    expect(File(task('d1').localPath).readAsBytesSync(), [...List.filled(4, 1), ...List.filled(6, 2)]);
+  });
+
+  test('a blip that does not stop the data leaves the request alone', () async {
+    await recreate();
+    final finish = Completer<void>();
+    api.downloads.add((onProgress, token, path) async {
+      await _write(path!, List.filled(4, 1), onProgress);
+      await finish.future;
+      await _write(path, List.filled(6, 1), onProgress);
+      return null;
+    });
+
+    await enqueue(download('d1'));
+    await until(() => task('d1').transferredBytes == 4, reason: 'first bytes');
+    connectivity.emit(false);
+    await pumpEventQueue();
+    // Data keeps arriving during the blip, so the connection survived.
+    finish.complete();
+    await until(() => task('d1').transferredBytes == 10, reason: 'data during blip');
+    connectivity.emit(true);
+    await until(() => task('d1').status == TransferStatus.completed, reason: 'completion');
+    expect(api.downloadCalls, 1);
   });
 
   test('connection lost mid-download: progress is kept and the Range resume continues it', () async {
@@ -223,7 +297,7 @@ void main() {
 
     connectivity.emit(false);
     await until(() => task('d1').networkHealth == NetworkHealth.offline, reason: 'offline shown');
-    await until(() => task('d1').error?.contains('Waiting for network') ?? false, reason: 'aborted and waiting');
+    await Future<void>.delayed(const Duration(milliseconds: 80)); // past offlineAbortAfter
     expect(task('d1').transferredBytes, 4, reason: 'last confirmed progress is preserved');
     expect(task('d1').status, TransferStatus.running);
     expect(api.downloadCalls, 1);
@@ -238,7 +312,8 @@ void main() {
     for (var i = 1; i < progress.length; i++) {
       expect(progress[i], greaterThanOrEqualTo(progress[i - 1]), reason: 'download progress never goes backwards');
     }
-    expect(history.where((t) => t.id == 'd1').map((t) => t.networkHealth), containsAllInOrder([NetworkHealth.offline, NetworkHealth.reconnecting, NetworkHealth.resumed]));
+    expect(history.where((t) => t.id == 'd1').map((t) => t.networkHealth), containsAllInOrder([NetworkHealth.offline, NetworkHealth.reconnecting]));
+    expect(history.where((t) => t.id == 'd1').map((t) => t.error), everyElement(isNull), reason: 'no explanatory messages');
   });
 
   test('connection lost mid-upload: progress is kept while waiting, then the upload honestly restarts from zero', () async {
@@ -259,9 +334,10 @@ void main() {
     await enqueue(upload('u1'));
     await until(() => task('u1').transferredBytes == 600, reason: 'upload progress');
     connectivity.emit(false);
-    await until(() => task('u1').error?.contains('restart from the beginning') ?? false, reason: 'waiting message');
+    await until(() => task('u1').networkHealth == NetworkHealth.offline, reason: 'offline');
+    await Future<void>.delayed(const Duration(milliseconds: 80)); // past offlineAbortAfter
     expect(task('u1').transferredBytes, 600, reason: 'progress is not reset while waiting');
-    expect(task('u1').networkHealth, NetworkHealth.offline);
+    expect(api.uploadCalls, 1);
 
     connectivity.emit(true);
     await until(() => task('u1').status == TransferStatus.completed, reason: 'completion');
@@ -372,7 +448,7 @@ void main() {
 
     expect(task('d1').status, TransferStatus.paused);
     expect(task('d1').networkHealth, NetworkHealth.offline);
-    expect(task('d1').error, contains('Paused due to connection loss'));
+    expect(task('d1').error, contains('connection lost'));
     expect(task('u1').status, TransferStatus.failed);
     expect(task('u1').error, contains('Connection lost'));
     expect(api.downloadCalls + api.uploadCalls, 0);

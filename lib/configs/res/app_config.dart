@@ -47,18 +47,22 @@ class AppConfig {
 
   /// When the device reports no network, a request that has also stopped
   /// moving for this long is aborted instead of waiting for the idle timeout.
-  /// Short network blips that do not stop the data are left alone.
+  /// Short blips that do not stop the data are left alone.
   static const Duration offlineAbortAfter = Duration(seconds: 10);
+
+  /// A request that was in flight when the network was lost and, once the
+  /// device is online again, receives nothing for this long is treated as a
+  /// dead connection: it is aborted and resumed at once (Range for downloads)
+  /// instead of hanging until [transferIdleTimeout].
+  static const Duration reconnectStallAfter = Duration(seconds: 3);
 
   /// A transfer waits this long for the network to come back. After that a
   /// download is paused (it can be resumed later) and an upload fails.
   static const Duration networkWaitLimit = Duration(minutes: 30);
 
-  /// Upper bound for exponential backoff between retries and reachability checks.
+  /// Upper bound for exponential backoff between retries.
   static const Duration maxRetryDelay = Duration(seconds: 60);
 
-  /// Timeout for the lightweight request that checks the server is reachable.
-  static const Duration reachabilityTimeout = Duration(seconds: 8);
 
   /// A retried upload whose previous attempt sent the whole body first looks
   /// for a server file with the same name and size uploaded since then. This
