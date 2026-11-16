@@ -155,17 +155,3 @@ Against a local server with the same Range/`ETag` behaviour:
   - the 30 MB upload restarted from 0% after each cut, and the server stored it **once**.
 - **Reconnection regression fix:** after an 8 s outage, resume time went from 32.9 s to **3.5 s**.
 
-## Known limitations
-
-- **Uploads can't resume mid-file.** The server only accepts one complete multipart `POST /upload` (no chunk, session or offset support; `PUT`/`PATCH` → 405). Interrupted uploads restart from 0%, and the bar holds at 99% until the server confirms. True resume needs a backend change, such as tus or chunked uploads.
-- **Android limits:**
-  - Android 15 caps `dataSync` services at 6 hours per day.
-  - Android 12+ can't start services from the background, so auto-resume after a kill waits for the next app launch.
-  - OEM battery managers may still kill the service.
-- **Network handover:** when Wi-Fi and mobile data return together, Android may close the mobile connection about 30 s later. Downloads resume within a second; uploads restart.
-- Upload speed is measured at the socket, so system buffers can make a slow upload look fast for a moment.
-- **iOS:** background transfers aren't implemented. They would need a native `URLSession` background configuration.
-- **Not tested on a physical phone, tablet or the live server:**
-  - network health was verified on the emulator against a local server;
-  - the layouts were verified by widget tests.
-- No token refresh: sessions last 24 h, then the user signs in again.
