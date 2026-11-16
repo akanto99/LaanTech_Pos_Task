@@ -1,6 +1,9 @@
 class AppConfig {
   static const String appName = 'LaanTech POS';
 
+  /// Completed downloads are saved to the public `Download/<this>/` folder.
+  static const String publicDownloadFolder = 'LaanTech';
+
   static const Duration connectTimeout = Duration(seconds: 20);
   static const Duration apiTimeout = Duration(seconds: 30);
   // Idle timeout between data chunks, so slow-but-moving transfers are never killed.

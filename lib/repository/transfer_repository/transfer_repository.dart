@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:laantech_pos_task/configs/res/app_config.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
+import 'package:laantech_pos_task/data/storage/base_download_storage.dart';
+import 'package:laantech_pos_task/data/storage/public_download_storage.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_store.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_task_handler.dart';
@@ -16,9 +18,10 @@ typedef UploadSelection = ({List<TransferTask> accepted, List<String> rejected})
 
 /// UI-isolate gateway to the background transfer service.
 class TransferRepository {
-  TransferRepository({TransferStore? store}) : _store = store ?? TransferStore();
+  TransferRepository({TransferStore? store, BaseDownloadStorage? downloadStorage}) : _store = store ?? TransferStore(), _downloadStorage = downloadStorage ?? PublicDownloadStorage();
 
   final TransferStore _store;
+  final BaseDownloadStorage _downloadStorage;
   final _updates = StreamController<List<TransferTask>>.broadcast();
   final _openRequests = StreamController<void>.broadcast();
   final _random = Random();
@@ -99,8 +102,13 @@ class TransferRepository {
     return (accepted: accepted, rejected: rejected);
   }
 
+  /// Asks for storage access up front (needed only on Android 7-9), because
+  /// the background service that later saves the file has no Activity to ask from.
   Future<TransferTask> createDownload(ServerFileModel file) async {
-    final directory = await _store.downloadsDirectory();
+    if (!await _downloadStorage.ensureWriteAccess()) {
+      throw const StorageException('Storage permission is required to save files to Download/${AppConfig.publicDownloadFolder}.');
+    }
+    final directory = await _store.stagingDirectory();
     final fileName = _safeFileName(file.originalName);
     return _newTask(TransferType.download, fileName: fileName, localPath: '${directory.path}/$fileName', totalBytes: file.size, serverFileName: file.name, remoteUrl: file.url);
   }

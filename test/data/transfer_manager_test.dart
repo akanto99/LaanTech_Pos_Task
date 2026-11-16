@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laantech_pos_task/configs/res/app_config.dart';
+import 'package:laantech_pos_task/configs/utils/file_names.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/data/network/base_api_services.dart';
+import 'package:laantech_pos_task/data/storage/base_download_storage.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_store.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
@@ -73,9 +75,32 @@ class FakeTransferApi implements BaseApiServices {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
+/// Stands in for the public Download/LaanTech folder.
+class FakeDownloadStorage implements BaseDownloadStorage {
+  FakeDownloadStorage(this.directory);
+
+  final Directory directory;
+  final failures = <AppException>[];
+  int publishCalls = 0;
+
+  @override
+  Future<PublishedDownload> publish({required String sourcePath, required String fileName}) async {
+    publishCalls++;
+    if (failures.isNotEmpty) throw failures.removeAt(0);
+    directory.createSync(recursive: true);
+    final destination = FileNames.available('${directory.path}/$fileName', (path) => File(path).existsSync());
+    final file = File(sourcePath).renameSync(destination);
+    return (path: file.path, size: file.lengthSync());
+  }
+
+  @override
+  Future<bool> ensureWriteAccess() async => true;
+}
+
 void main() {
   late Directory root;
   late FakeTransferApi api;
+  late FakeDownloadStorage publicStorage;
   late TransferStore store;
   late TransferManager manager;
 
@@ -108,6 +133,7 @@ void main() {
   TransferManager createManager() => TransferManager(
     store: store,
     apiServices: api,
+    downloadStorage: publicStorage,
     retryBaseDelay: const Duration(milliseconds: 1),
   );
 
@@ -126,6 +152,7 @@ void main() {
   setUp(() async {
     root = await Directory.systemTemp.createTemp('transfers');
     api = FakeTransferApi();
+    publicStorage = FakeDownloadStorage(Directory('${root.path}/public'));
     store = TransferStore(
       dataDirectory: () async => root,
       temporaryDirectory: () async => Directory('${root.path}/cache'),
@@ -274,8 +301,41 @@ void main() {
     await manager.apply(const TransferCommand(TransferAction.resume, id: 'd1'));
     final done = await settle('d1');
     expect(done.status, TransferStatus.completed);
+    expect(done.localPath, '${root.path}/public/report.pdf');
     expect(File(done.localPath).lengthSync(), 10);
-    expect(File(done.partialPath).existsSync(), isFalse);
+    expect(File(download('d1').partialPath).existsSync(), isFalse);
+  });
+
+  test('partial data stays in staging until the download completes', () async {
+    api.hold = Completer();
+    await enqueue(download('d1'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(File(download('d1').partialPath).lengthSync(), 5);
+    expect(publicStorage.directory.existsSync(), isFalse);
+
+    api.hold!.complete();
+    final done = await settle('d1');
+    expect(done.status, TransferStatus.completed);
+    expect(publicStorage.directory.listSync().map((e) => e.path), ['${root.path}/public/report.pdf']);
+  });
+
+  test('a failed save keeps the data and a retry saves it without re-downloading', () async {
+    publicStorage.failures.add(const StorageException('Not enough storage space on this device.'));
+    await enqueue(download('d1'));
+
+    final failed = await settle('d1');
+    expect(failed.status, TransferStatus.failed);
+    expect(failed.error, 'Not enough storage space on this device.');
+    expect(File(failed.partialPath).lengthSync(), 10);
+
+    // The server answers the Range request for a complete file with 416.
+    api.onDownload = (_) {};
+    await manager.apply(const TransferCommand(TransferAction.retry, id: 'd1'));
+    final done = await settle('d1');
+    expect(done.status, TransferStatus.completed);
+    expect(File(done.localPath).readAsBytesSync(), [...List.filled(5, 1), ...List.filled(5, 2)]);
+    expect(publicStorage.publishCalls, 2);
   });
 
   test('cancelling a download deletes its partial file', () async {
@@ -290,15 +350,17 @@ void main() {
   });
 
   test('existing file names are never overwritten', () async {
-    File('${root.path}/report.pdf').writeAsStringSync('existing');
+    final existing = File('${root.path}/public/report.pdf')..createSync(recursive: true)..writeAsStringSync('existing');
     await enqueue(download('d1'));
     await enqueue(download('d2'));
 
     final first = await settle('d1');
     final second = await settle('d2');
-    expect(first.localPath, '${root.path}/report (1).pdf');
-    expect(second.localPath, '${root.path}/report (2).pdf');
-    expect(File('${root.path}/report.pdf').readAsStringSync(), 'existing');
+    // Concurrent downloads of one name get separate staging files…
+    expect(first.partialPath, isNot(second.partialPath));
+    // …and separate public names, leaving the existing file untouched.
+    expect({first.localPath, second.localPath}, {'${root.path}/public/report (1).pdf', '${root.path}/public/report (2).pdf'});
+    expect(existing.readAsStringSync(), 'existing');
   });
 
   test(

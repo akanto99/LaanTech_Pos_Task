@@ -1,0 +1,24 @@
+name: public_downloads
+description: "Saves finished downloads into the public Android Download folder via MediaStore (Android 10+) or the legacy shared-storage API (Android 7-9)."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+# A plugin (not app code) so it is registered in every Flutter engine,
+# including the foreground-service engine where downloads complete.
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.laantech.public_downloads
+        pluginClass: PublicDownloadsPlugin

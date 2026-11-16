@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:laantech_pos_task/configs/res/app_config.dart';
 import 'package:laantech_pos_task/configs/res/app_url.dart';
+import 'package:laantech_pos_task/configs/utils/file_names.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/data/network/base_api_services.dart';
+import 'package:laantech_pos_task/data/storage/base_download_storage.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_store.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
@@ -20,14 +22,22 @@ abstract class TransferNotifier {
 /// a non-executing instance only to apply commands to the persisted queue
 /// while the service is stopped, so both sides share one set of rules.
 class TransferManager {
-  TransferManager({required TransferStore store, BaseApiServices? apiServices, TransferNotifier? notifier, void Function()? onChanged, this.retryBaseDelay = AppConfig.retryBaseDelay})
-    : _store = store,
+  TransferManager({
+    required TransferStore store,
+    BaseApiServices? apiServices,
+    BaseDownloadStorage? downloadStorage,
+    TransferNotifier? notifier,
+    void Function()? onChanged,
+    this.retryBaseDelay = AppConfig.retryBaseDelay,
+  }) : _store = store,
       _api = apiServices,
+      _downloadStorage = downloadStorage,
       _notifier = notifier,
       _onChanged = onChanged;
 
   final TransferStore _store;
   final BaseApiServices? _api;
+  final BaseDownloadStorage? _downloadStorage;
   final TransferNotifier? _notifier;
   final void Function()? _onChanged;
   final Duration retryBaseDelay;
@@ -218,11 +228,12 @@ class TransferManager {
       cancelToken: token,
       onProgress: (received, total) => _progress(id, received, total: total > 0 ? total : null),
     );
+    // Only a complete file leaves private staging. If publishing fails the
+    // full partial file is kept, and a retry publishes it without
+    // re-downloading (the Range request answers 416 for a complete file).
     final current = _tasks[id]!;
-    final destination = _availablePath(current.localPath, id);
-    await File(current.partialPath).rename(destination);
-    final size = await File(destination).length();
-    _update(current.copyWith(status: TransferStatus.completed, localPath: destination, totalBytes: size, transferredBytes: size));
+    final published = await _downloadStorage!.publish(sourcePath: current.partialPath, fileName: current.fileName);
+    _update(current.copyWith(status: TransferStatus.completed, localPath: published.path, totalBytes: published.size, transferredBytes: published.size));
   }
 
   void _progress(String id, int transferred, {int? total}) {
@@ -248,23 +259,12 @@ class TransferManager {
     if (await partial.exists()) await partial.delete();
   }
 
-  /// Returns [desired], or "name (n).ext", so neither an existing file nor
-  /// another queued download is ever overwritten.
-  String _availablePath(String desired, String ownerId) {
-    final dot = desired.lastIndexOf('.');
-    final slash = desired.lastIndexOf(Platform.pathSeparator);
-    final hasExtension = dot > slash + 1;
-    final base = hasExtension ? desired.substring(0, dot) : desired;
-    final extension = hasExtension ? desired.substring(dot) : '';
-
-    bool taken(String path) => File(path).existsSync() || _tasks.values.any((task) => task.id != ownerId && !task.isUpload && task.status != TransferStatus.cancelled && task.localPath == path);
-
-    var candidate = desired;
-    for (var copy = 1; taken(candidate); copy++) {
-      candidate = '$base ($copy)$extension';
-    }
-    return candidate;
-  }
+  /// Gives each queued download its own staging path, so two downloads of the
+  /// same name never share (and corrupt) one partial file.
+  String _availablePath(String desired, String ownerId) => FileNames.available(
+    desired,
+    (path) => File(path).existsSync() || _tasks.values.any((task) => task.id != ownerId && !task.isUpload && task.status != TransferStatus.cancelled && task.localPath == path),
+  );
 
   void _trimHistory() {
     final finished = tasks.where((task) => task.status.isFinished).toList();

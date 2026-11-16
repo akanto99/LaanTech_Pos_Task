@@ -21,6 +21,8 @@ dependencies:
   flutter_local_notifications: ^22.3.3
   intl: ^0.20.3
   another_flushbar: ^2.2.4
+  public_downloads:
+    path: packages/public_downloads
 
 dev_dependencies:
   flutter_test:

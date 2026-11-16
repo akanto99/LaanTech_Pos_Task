@@ -8,14 +8,14 @@ import 'package:path_provider/path_provider.dart';
 class TransferStore {
   TransferStore({
     Future<Directory> Function()? dataDirectory,
-    Future<Directory> Function()? downloadsDirectory,
+    Future<Directory> Function()? stagingDirectory,
     Future<Directory> Function()? temporaryDirectory,
   }) : _dataDirectory = dataDirectory ?? getApplicationSupportDirectory,
-       _downloadsDirectory = downloadsDirectory ?? _defaultDownloadsDirectory,
+       _stagingDirectory = stagingDirectory ?? getApplicationSupportDirectory,
        _temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory;
 
   final Future<Directory> Function() _dataDirectory;
-  final Future<Directory> Function() _downloadsDirectory;
+  final Future<Directory> Function() _stagingDirectory;
   final Future<Directory> Function() _temporaryDirectory;
   Future<void> _lastWrite = Future.value();
 
@@ -56,16 +56,11 @@ class TransferStore {
     }
   }
 
-  Future<Directory> downloadsDirectory() async {
-    final directory = Directory(
-      '${(await _downloadsDirectory()).path}/Downloads',
-    );
+  /// App-private working area where downloads are written and resumed. It is
+  /// invisible to file managers, so partial files are never exposed; finished
+  /// files are moved to public storage by `BaseDownloadStorage.publish`.
+  Future<Directory> stagingDirectory() async {
+    final directory = Directory('${(await _stagingDirectory()).path}/download_staging');
     return directory.create(recursive: true);
   }
-
-  /// App-specific external storage needs no runtime permission on any
-  /// Android version and is visible over USB / in Files on most devices.
-  static Future<Directory> _defaultDownloadsDirectory() async =>
-      (Platform.isAndroid ? await getExternalStorageDirectory() : null) ??
-      await getApplicationDocumentsDirectory();
 }

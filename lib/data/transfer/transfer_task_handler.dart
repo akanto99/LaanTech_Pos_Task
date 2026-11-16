@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:laantech_pos_task/configs/services/notification_services/notification_service.dart';
 import 'package:laantech_pos_task/data/network/network_api_service.dart';
+import 'package:laantech_pos_task/data/storage/public_download_storage.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_store.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
@@ -34,7 +35,7 @@ class TransferTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     await NotificationService.instance.initialize();
-    _manager = TransferManager(store: TransferStore(), apiServices: NetworkApiService(), notifier: NotificationService.instance, onChanged: _scheduleSync);
+    _manager = TransferManager(store: TransferStore(), apiServices: NetworkApiService(), downloadStorage: PublicDownloadStorage(), notifier: NotificationService.instance, onChanged: _scheduleSync);
     await _manager.restore();
     _ready.complete();
     _manager.start();

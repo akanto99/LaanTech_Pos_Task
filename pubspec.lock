@@ -575,6 +575,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.1"
+  public_downloads:
+    dependency: "direct main"
+    description:
+      path: "packages/public_downloads"
+      relative: true
+    source: path
+    version: "1.0.0"
   record_use:
     dependency: transitive
     description:
