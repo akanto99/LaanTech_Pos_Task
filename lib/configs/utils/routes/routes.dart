@@ -19,9 +19,7 @@ class Routes {
       RoutesName.upload => const UploadView(),
       RoutesName.download => const DownloadView(),
       RoutesName.transfers => const TransfersView(),
-      RoutesName.transferDetails => TransferDetailsView(
-        transferId: settings.arguments as String,
-      ),
+      RoutesName.transferDetails => TransferDetailsView(transferId: settings.arguments as String),
       _ => const Scaffold(body: Center(child: Text('No route defined'))),
     };
     return MaterialPageRoute(builder: (_) => page, settings: settings);

@@ -9,15 +9,7 @@ class ServerFileModel {
   final DateTime? uploadedAt;
   final String url;
 
-  const ServerFileModel({
-    required this.id,
-    required this.name,
-    required this.originalName,
-    required this.size,
-    required this.type,
-    required this.uploadedAt,
-    required this.url,
-  });
+  const ServerFileModel({required this.id, required this.name, required this.originalName, required this.size, required this.type, required this.uploadedAt, required this.url});
 
   factory ServerFileModel.fromJson(Map<String, dynamic> json) {
     final name = json['name'] as String;
@@ -27,15 +19,11 @@ class ServerFileModel {
       originalName: json['original_name'] as String? ?? name,
       size: (json['size'] as num?)?.toInt() ?? 0,
       type: json['type'] as String? ?? 'application/octet-stream',
-      uploadedAt: DateTime.tryParse(
-        json['uploaded_at'] as String? ?? '',
-      )?.toLocal(),
+      uploadedAt: DateTime.tryParse(json['uploaded_at'] as String? ?? '')?.toLocal(),
       url: json['url'] as String? ?? '',
     );
   }
 
   static List<ServerFileModel> listFromJson(dynamic json) =>
-      ((json as Map<String, dynamic>)['files'] as List<dynamic>? ?? [])
-          .map((file) => ServerFileModel.fromJson(file as Map<String, dynamic>))
-          .toList();
+      ((json as Map<String, dynamic>)['files'] as List<dynamic>? ?? []).map((file) => ServerFileModel.fromJson(file as Map<String, dynamic>)).toList();
 }

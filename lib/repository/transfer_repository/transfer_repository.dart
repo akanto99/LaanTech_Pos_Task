@@ -12,15 +12,11 @@ import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 
-typedef UploadSelection = ({
-  List<TransferTask> accepted,
-  List<String> rejected,
-});
+typedef UploadSelection = ({List<TransferTask> accepted, List<String> rejected});
 
 /// UI-isolate gateway to the background transfer service.
 class TransferRepository {
-  TransferRepository({TransferStore? store})
-    : _store = store ?? TransferStore();
+  TransferRepository({TransferStore? store}) : _store = store ?? TransferStore();
 
   final TransferStore _store;
   final _updates = StreamController<List<TransferTask>>.broadcast();
@@ -42,11 +38,7 @@ class TransferRepository {
         onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.nothing(),
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
+      foregroundTaskOptions: ForegroundTaskOptions(eventAction: ForegroundTaskEventAction.nothing(), allowWakeLock: true, allowWifiLock: true),
     );
   }
 
@@ -58,11 +50,8 @@ class TransferRepository {
   /// (force stop, crash, reboot) the restored work is resumed immediately.
   Future<List<TransferTask>> loadTasks() async {
     if (await FlutterForegroundTask.isRunningService) {
-      FlutterForegroundTask.sendDataToTask(
-        const TransferCommand(TransferAction.sync).toJson(),
-      );
-      return (await _store.load())
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      FlutterForegroundTask.sendDataToTask(const TransferCommand(TransferAction.sync).toJson());
+      return (await _store.load())..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
     final manager = TransferManager(store: _store);
     await manager.restore();
@@ -94,30 +83,18 @@ class TransferRepository {
   }
 
   Future<UploadSelection> pickUploads() async {
-    final files = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: AppConfig.uploadExtensions,
-    );
+    final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: AppConfig.uploadExtensions);
     final accepted = <TransferTask>[];
     final rejected = <String>[];
     for (final file in files) {
       final path = file.path;
       final size = await file.length() ?? 0;
       final extension = file.extension?.toLowerCase();
-      if (path == null ||
-          size == 0 ||
-          !AppConfig.uploadExtensions.contains(extension)) {
+      if (path == null || size == 0 || !AppConfig.uploadExtensions.contains(extension)) {
         rejected.add(file.name);
         continue;
       }
-      accepted.add(
-        _newTask(
-          TransferType.upload,
-          fileName: file.name,
-          localPath: path,
-          totalBytes: size,
-        ),
-      );
+      accepted.add(_newTask(TransferType.upload, fileName: file.name, localPath: path, totalBytes: size));
     }
     return (accepted: accepted, rejected: rejected);
   }
@@ -125,19 +102,11 @@ class TransferRepository {
   Future<TransferTask> createDownload(ServerFileModel file) async {
     final directory = await _store.downloadsDirectory();
     final fileName = _safeFileName(file.originalName);
-    return _newTask(
-      TransferType.download,
-      fileName: fileName,
-      localPath: '${directory.path}/$fileName',
-      totalBytes: file.size,
-      serverFileName: file.name,
-      remoteUrl: file.url,
-    );
+    return _newTask(TransferType.download, fileName: fileName, localPath: '${directory.path}/$fileName', totalBytes: file.size, serverFileName: file.name, remoteUrl: file.url);
   }
 
   Future<void> _startService() async {
-    if (await FlutterForegroundTask.checkNotificationPermission() !=
-        NotificationPermission.granted) {
+    if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
     }
     final result = await FlutterForegroundTask.startService(
@@ -148,9 +117,7 @@ class TransferRepository {
       callback: startTransferTaskHandler,
     );
     if (result is ServiceRequestFailure) {
-      throw AppException(
-        'Could not start background transfers: ${result.error}',
-      );
+      throw AppException('Could not start background transfers: ${result.error}');
     }
   }
 
@@ -158,28 +125,13 @@ class TransferRepository {
     if (data is! Map) return;
     switch (data['event']) {
       case TransferEvent.snapshot:
-        _updates.add(
-          (data['tasks'] as List<dynamic>)
-              .map(
-                (task) => TransferTask.fromJson(
-                  Map<String, dynamic>.from(task as Map),
-                ),
-              )
-              .toList(),
-        );
+        _updates.add((data['tasks'] as List<dynamic>).map((task) => TransferTask.fromJson(Map<String, dynamic>.from(task as Map))).toList());
       case TransferEvent.openTransfers:
         _openRequests.add(null);
     }
   }
 
-  TransferTask _newTask(
-    TransferType type, {
-    required String fileName,
-    required String localPath,
-    required int totalBytes,
-    String? serverFileName,
-    String? remoteUrl,
-  }) {
+  TransferTask _newTask(TransferType type, {required String fileName, required String localPath, required int totalBytes, String? serverFileName, String? remoteUrl}) {
     final now = DateTime.now();
     return TransferTask(
       id: '${now.microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}',
@@ -197,11 +149,7 @@ class TransferRepository {
   }
 
   String _safeFileName(String name) {
-    final cleaned = name
-        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
-        .trim();
-    return cleaned.isEmpty || cleaned.startsWith('.')
-        ? 'file_$cleaned'
-        : cleaned;
+    final cleaned = name.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_').trim();
+    return cleaned.isEmpty || cleaned.startsWith('.') ? 'file_$cleaned' : cleaned;
   }
 }

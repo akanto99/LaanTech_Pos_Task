@@ -4,8 +4,8 @@ import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/validations/auth_validation.dart';
 import 'package:laantech_pos_task/configs/widgets/custom_textfield.dart';
-import 'package:laantech_pos_task/view/auth/auth_form_layout.dart';
-import 'package:laantech_pos_task/view/auth/password_field.dart';
+import 'package:laantech_pos_task/view/auth/helpers_widgets/auth_form_layout.dart';
+import 'package:laantech_pos_task/view/auth/helpers_widgets/password_field.dart';
 import 'package:laantech_pos_task/view_model/auth_view_model/auth_view_model.dart';
 import 'package:provider/provider.dart';
 

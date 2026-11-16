@@ -34,12 +34,7 @@ class TransferTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     await NotificationService.instance.initialize();
-    _manager = TransferManager(
-      store: TransferStore(),
-      apiServices: NetworkApiService(),
-      notifier: NotificationService.instance,
-      onChanged: _scheduleSync,
-    );
+    _manager = TransferManager(store: TransferStore(), apiServices: NetworkApiService(), notifier: NotificationService.instance, onChanged: _scheduleSync);
     await _manager.restore();
     _ready.complete();
     _manager.start();
@@ -58,9 +53,7 @@ class TransferTaskHandler extends TaskHandler {
 
   @override
   void onNotificationPressed() {
-    FlutterForegroundTask.sendDataToMain({
-      'event': TransferEvent.openTransfers,
-    });
+    FlutterForegroundTask.sendDataToMain({'event': TransferEvent.openTransfers});
   }
 
   @override
@@ -75,38 +68,22 @@ class TransferTaskHandler extends TaskHandler {
   Future<void> _sync() async {
     _syncTimer = null;
     final tasks = _manager.tasks;
-    FlutterForegroundTask.sendDataToMain({
-      'event': TransferEvent.snapshot,
-      'tasks': tasks.map((task) => task.toJson()).toList(),
-    });
+    FlutterForegroundTask.sendDataToMain({'event': TransferEvent.snapshot, 'tasks': tasks.map((task) => task.toJson()).toList()});
     await _manager.persist();
     _updateServiceNotification(tasks);
     _stopWhenIdle();
   }
 
   void _updateServiceNotification(List<TransferTask> tasks) {
-    final running = tasks.where(
-      (task) => task.status == TransferStatus.running,
-    );
-    final queued = tasks
-        .where((task) => task.status == TransferStatus.pending)
-        .length;
+    final running = tasks.where((task) => task.status == TransferStatus.running);
+    final queued = tasks.where((task) => task.status == TransferStatus.pending).length;
     final total = running.fold<int>(0, (sum, task) => sum + task.totalBytes);
-    final done = running.fold<int>(
-      0,
-      (sum, task) => sum + task.transferredBytes,
-    );
+    final done = running.fold<int>(0, (sum, task) => sum + task.transferredBytes);
     final percent = total > 0 ? (done * 100 / total).floor() : 0;
-    final text = [
-      '${running.length} active · $percent%',
-      if (queued > 0) '$queued queued',
-    ].join(' · ');
+    final text = ['${running.length} active · $percent%', if (queued > 0) '$queued queued'].join(' · ');
     if (text == _serviceText) return;
     _serviceText = text;
-    FlutterForegroundTask.updateService(
-      notificationTitle: 'Transferring files',
-      notificationText: text,
-    );
+    FlutterForegroundTask.updateService(notificationTitle: 'Transferring files', notificationText: text);
   }
 
   void _stopWhenIdle() {

@@ -10,8 +10,7 @@ import 'package:laantech_pos_task/repository/transfer_repository/transfer_reposi
 /// App-wide mirror of the background transfer queue. Transfers execute in the
 /// foreground service; this view model only reflects and controls them.
 class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
-  TransferViewModel({TransferRepository? repository})
-    : _repository = repository ?? TransferRepository() {
+  TransferViewModel({TransferRepository? repository}) : _repository = repository ?? TransferRepository() {
     _repository.attach();
     _updatesSubscription = _repository.updates.listen(_setTasks);
     WidgetsBinding.instance.addObserver(this);
@@ -26,32 +25,24 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
 
   List<TransferTask> get tasks => _tasks;
   List<TransferTask> get uploads => _tasks.where((t) => t.isUpload).toList();
-  List<TransferTask> get activeTasks =>
-      _tasks.where((t) => t.status.isActive).toList();
+  List<TransferTask> get activeTasks => _tasks.where((t) => t.status.isActive).toList();
   bool get picking => _picking;
   Stream<void> get openRequests => _repository.openRequests;
 
-  int count(TransferStatus status) =>
-      _tasks.where((task) => task.status == status).length;
+  int count(TransferStatus status) => _tasks.where((task) => task.status == status).length;
 
   int get activeCount => activeTasks.length;
 
   double get activeProgress {
     final active = activeTasks.where((task) => task.totalBytes > 0);
     final total = active.fold<int>(0, (sum, task) => sum + task.totalBytes);
-    final done = active.fold<int>(
-      0,
-      (sum, task) => sum + task.transferredBytes,
-    );
+    final done = active.fold<int>(0, (sum, task) => sum + task.transferredBytes);
     return total > 0 ? done / total : 0;
   }
 
-  TransferTask? byId(String id) =>
-      _tasks.where((task) => task.id == id).firstOrNull;
+  TransferTask? byId(String id) => _tasks.where((task) => task.id == id).firstOrNull;
 
-  TransferTask? latestDownloadOf(String serverFileName) => _tasks
-      .where((t) => !t.isUpload && t.serverFileName == serverFileName)
-      .firstOrNull;
+  TransferTask? latestDownloadOf(String serverFileName) => _tasks.where((t) => !t.isUpload && t.serverFileName == serverFileName).firstOrNull;
 
   Future<void> refresh() async => _setTasks(await _repository.loadTasks());
 
@@ -68,13 +59,9 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
     try {
       final selection = await _repository.pickUploads();
       if (selection.accepted.isNotEmpty) {
-        await _repository.dispatch(
-          TransferCommand(TransferAction.enqueue, tasks: selection.accepted),
-        );
+        await _repository.dispatch(TransferCommand(TransferAction.enqueue, tasks: selection.accepted));
       }
-      return selection.rejected.isEmpty
-          ? null
-          : 'Skipped unsupported or empty files: ${selection.rejected.join(', ')}';
+      return selection.rejected.isEmpty ? null : 'Skipped unsupported or empty files: ${selection.rejected.join(', ')}';
     } catch (error) {
       return _message(error);
     } finally {
@@ -86,9 +73,7 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
   Future<String?> download(ServerFileModel file) async {
     try {
       final task = await _repository.createDownload(file);
-      await _repository.dispatch(
-        TransferCommand(TransferAction.enqueue, tasks: [task]),
-      );
+      await _repository.dispatch(TransferCommand(TransferAction.enqueue, tasks: [task]));
       return null;
     } catch (error) {
       return _message(error);
@@ -119,9 +104,7 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
   }
 
-  String _message(Object error) => error is AppException
-      ? error.message
-      : 'Something went wrong. Please try again.';
+  String _message(Object error) => error is AppException ? error.message : 'Something went wrong. Please try again.';
 
   @override
   void dispose() {

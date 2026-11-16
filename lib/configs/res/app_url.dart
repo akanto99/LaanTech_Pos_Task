@@ -10,6 +10,5 @@ class AppUrl {
   static String fileUrl(String name) => _withFile(files, name);
   static String deleteFileUrl(String name) => _withFile(delete, name);
 
-  static String _withFile(String url, String name) =>
-      Uri.parse(url).replace(queryParameters: {'file': name}).toString();
+  static String _withFile(String url, String name) => Uri.parse(url).replace(queryParameters: {'file': name}).toString();
 }

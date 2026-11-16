@@ -5,8 +5,7 @@ import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
 import 'package:laantech_pos_task/repository/file_repository/file_repository.dart';
 
 class ServerFilesViewModel with ChangeNotifier {
-  ServerFilesViewModel({FileRepository? repository})
-    : _repository = repository ?? FileRepository();
+  ServerFilesViewModel({FileRepository? repository}) : _repository = repository ?? FileRepository();
 
   final FileRepository _repository;
 
@@ -34,9 +33,7 @@ class ServerFilesViewModel with ChangeNotifier {
     notifyListeners();
     try {
       await _repository.deleteFile(file.name);
-      files = ApiResponse.completed(
-        files.data!.where((item) => item.name != file.name).toList(),
-      );
+      files = ApiResponse.completed(files.data!.where((item) => item.name != file.name).toList());
       return null;
     } catch (error) {
       return _message(error);
@@ -46,7 +43,5 @@ class ServerFilesViewModel with ChangeNotifier {
     }
   }
 
-  String _message(Object error) => error is AppException
-      ? error.message
-      : 'Something went wrong. Please try again.';
+  String _message(Object error) => error is AppException ? error.message : 'Something went wrong. Please try again.';
 }

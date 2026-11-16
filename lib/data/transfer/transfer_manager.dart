@@ -20,16 +20,11 @@ abstract class TransferNotifier {
 /// a non-executing instance only to apply commands to the persisted queue
 /// while the service is stopped, so both sides share one set of rules.
 class TransferManager {
-  TransferManager({
-    required TransferStore store,
-    BaseApiServices? apiServices,
-    TransferNotifier? notifier,
-    void Function()? onChanged,
-    this.retryBaseDelay = AppConfig.retryBaseDelay,
-  }) : _store = store,
-       _api = apiServices,
-       _notifier = notifier,
-       _onChanged = onChanged;
+  TransferManager({required TransferStore store, BaseApiServices? apiServices, TransferNotifier? notifier, void Function()? onChanged, this.retryBaseDelay = AppConfig.retryBaseDelay})
+    : _store = store,
+      _api = apiServices,
+      _notifier = notifier,
+      _onChanged = onChanged;
 
   final TransferStore _store;
   final BaseApiServices? _api;
@@ -43,17 +38,13 @@ class TransferManager {
 
   bool get _executes => _api != null;
 
-  List<TransferTask> get tasks =>
-      _tasks.values.toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  List<TransferTask> get tasks => _tasks.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   bool get hasActiveWork => _tasks.values.any((task) => task.status.isActive);
 
   Future<void> restore() async {
     for (final task in await _store.load()) {
-      _tasks[task.id] = task.status == TransferStatus.running
-          ? _interrupted(task)
-          : task;
+      _tasks[task.id] = task.status == TransferStatus.running ? _interrupted(task) : task;
     }
   }
 
@@ -66,11 +57,7 @@ class TransferManager {
     switch (command.action) {
       case TransferAction.enqueue:
         for (final task in command.tasks) {
-          _tasks[task.id] = task.isUpload
-              ? task
-              : task.copyWith(
-                  localPath: _availablePath(task.localPath, task.id),
-                );
+          _tasks[task.id] = task.isUpload ? task : task.copyWith(localPath: _availablePath(task.localPath, task.id));
         }
       case TransferAction.pause:
         if (_tasks[id]?.canPause ?? false) {
@@ -117,27 +104,15 @@ class TransferManager {
   }
 
   TransferTask _interrupted(TransferTask task) => task.isUpload
-      ? task.copyWith(
-          status: TransferStatus.failed,
-          transferredBytes: 0,
-          error: 'Upload was interrupted. Retry to upload it again.',
-        )
+      ? task.copyWith(status: TransferStatus.failed, transferredBytes: 0, error: 'Upload was interrupted. Retry to upload it again.')
       : task.copyWith(status: TransferStatus.pending, clearError: true);
 
   void _requeue(String id) {
     final task = _tasks[id];
-    if (task == null ||
-        task.status.isActive ||
-        task.status == TransferStatus.completed) {
+    if (task == null || task.status.isActive || task.status == TransferStatus.completed) {
       return;
     }
-    _update(
-      task.copyWith(
-        status: TransferStatus.pending,
-        transferredBytes: task.isUpload ? 0 : null,
-        clearError: true,
-      ),
-    );
+    _update(task.copyWith(status: TransferStatus.pending, transferredBytes: task.isUpload ? 0 : null, clearError: true));
   }
 
   Future<void> _stop(String id, TransferStatus status) async {
@@ -154,33 +129,19 @@ class TransferManager {
 
   Future<void> _applyStop(TransferTask task, TransferStatus status) async {
     if (status == TransferStatus.cancelled) await _deletePartial(task);
-    _update(
-      task.copyWith(
-        status: status,
-        transferredBytes: status == TransferStatus.cancelled || task.isUpload
-            ? 0
-            : null,
-        clearError: true,
-      ),
-    );
+    _update(task.copyWith(status: status, transferredBytes: status == TransferStatus.cancelled || task.isUpload ? 0 : null, clearError: true));
   }
 
   void _pump() {
     if (!_executes) return;
-    final pending =
-        _tasks.values
-            .where((task) => task.status == TransferStatus.pending)
-            .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final pending = _tasks.values.where((task) => task.status == TransferStatus.pending).toList()..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     for (final task in pending) {
       if (_runningCount >= AppConfig.maxConcurrentTransfers) break;
       unawaited(_run(task.id));
     }
   }
 
-  int get _runningCount => _tasks.values
-      .where((task) => task.status == TransferStatus.running)
-      .length;
+  int get _runningCount => _tasks.values.where((task) => task.status == TransferStatus.running).length;
 
   Future<void> _run(String id) async {
     for (var attempt = 0; ;) {
@@ -207,13 +168,10 @@ class TransferManager {
           break;
         }
 
-        final exception = error is AppException
-            ? error
-            : const AppException('An unexpected error occurred.');
+        final exception = error is AppException ? error : const AppException('An unexpected error occurred.');
         // Downloads resume from their partial file, so an attempt that made
         // progress resets the budget; only consecutive dead attempts count.
-        if (!current.isUpload &&
-            current.transferredBytes > task.transferredBytes) {
+        if (!current.isUpload && current.transferredBytes > task.transferredBytes) {
           attempt = 0;
         }
         if (exception.retryable && attempt < AppConfig.maxAutoRetries) {
@@ -230,13 +188,7 @@ class TransferManager {
           attempt++;
           continue;
         }
-        _update(
-          current.copyWith(
-            status: TransferStatus.failed,
-            transferredBytes: current.isUpload ? 0 : null,
-            error: exception.message,
-          ),
-        );
+        _update(current.copyWith(status: TransferStatus.failed, transferredBytes: current.isUpload ? 0 : null, error: exception.message));
         break;
       }
     }
@@ -251,21 +203,10 @@ class TransferManager {
       fileName: task.fileName,
       cancelToken: token,
       // Multipart framing adds a few bytes, so progress is scaled to the file size.
-      onProgress: (sent, total) => _progress(
-        id,
-        total > 0 ? (sent * task.totalBytes / total).round() : sent,
-      ),
+      onProgress: (sent, total) => _progress(id, total > 0 ? (sent * task.totalBytes / total).round() : sent),
     );
-    final file =
-        (response as Map<String, dynamic>)['file'] as Map<String, dynamic>;
-    _update(
-      _tasks[id]!.copyWith(
-        status: TransferStatus.completed,
-        transferredBytes: task.totalBytes,
-        serverFileName: file['name'] as String?,
-        remoteUrl: file['url'] as String?,
-      ),
-    );
+    final file = (response as Map<String, dynamic>)['file'] as Map<String, dynamic>;
+    _update(_tasks[id]!.copyWith(status: TransferStatus.completed, transferredBytes: task.totalBytes, serverFileName: file['name'] as String?, remoteUrl: file['url'] as String?));
     await _store.deleteIfTemporary(task.localPath);
   }
 
@@ -275,21 +216,13 @@ class TransferManager {
       AppUrl.fileUrl(task.serverFileName!),
       savePath: task.partialPath,
       cancelToken: token,
-      onProgress: (received, total) =>
-          _progress(id, received, total: total > 0 ? total : null),
+      onProgress: (received, total) => _progress(id, received, total: total > 0 ? total : null),
     );
     final current = _tasks[id]!;
     final destination = _availablePath(current.localPath, id);
     await File(current.partialPath).rename(destination);
     final size = await File(destination).length();
-    _update(
-      current.copyWith(
-        status: TransferStatus.completed,
-        localPath: destination,
-        totalBytes: size,
-        transferredBytes: size,
-      ),
-    );
+    _update(current.copyWith(status: TransferStatus.completed, localPath: destination, totalBytes: size, transferredBytes: size));
   }
 
   void _progress(String id, int transferred, {int? total}) {
@@ -307,9 +240,7 @@ class TransferManager {
 
   /// Removes app-owned data for a task leaving the queue: a download's
   /// partial file or an upload's temporary picker copy.
-  Future<void> _discardFiles(TransferTask task) => task.isUpload
-      ? _store.deleteIfTemporary(task.localPath)
-      : _deletePartial(task);
+  Future<void> _discardFiles(TransferTask task) => task.isUpload ? _store.deleteIfTemporary(task.localPath) : _deletePartial(task);
 
   Future<void> _deletePartial(TransferTask task) async {
     if (task.isUpload) return;
@@ -326,15 +257,7 @@ class TransferManager {
     final base = hasExtension ? desired.substring(0, dot) : desired;
     final extension = hasExtension ? desired.substring(dot) : '';
 
-    bool taken(String path) =>
-        File(path).existsSync() ||
-        _tasks.values.any(
-          (task) =>
-              task.id != ownerId &&
-              !task.isUpload &&
-              task.status != TransferStatus.cancelled &&
-              task.localPath == path,
-        );
+    bool taken(String path) => File(path).existsSync() || _tasks.values.any((task) => task.id != ownerId && !task.isUpload && task.status != TransferStatus.cancelled && task.localPath == path);
 
     var candidate = desired;
     for (var copy = 1; taken(candidate); copy++) {

@@ -20,9 +20,7 @@ class BadRequestException extends AppException {
 }
 
 class UnauthorisedException extends AppException {
-  const UnauthorisedException([
-    super.message = 'Your session has expired. Please log in again.',
-  ]);
+  const UnauthorisedException([super.message = 'Your session has expired. Please log in again.']);
 }
 
 class InvalidInputException extends AppException {

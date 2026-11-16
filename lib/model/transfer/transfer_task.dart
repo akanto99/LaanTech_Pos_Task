@@ -9,8 +9,7 @@ enum TransferStatus {
   cancelled;
 
   bool get isActive => this == pending || this == running;
-  bool get isFinished =>
-      this == completed || this == failed || this == cancelled;
+  bool get isFinished => this == completed || this == failed || this == cancelled;
 }
 
 class TransferTask {
@@ -48,9 +47,7 @@ class TransferTask {
 
   bool get isUpload => type == TransferType.upload;
 
-  double get progress => totalBytes > 0
-      ? (transferredBytes / totalBytes).clamp(0, 1).toDouble()
-      : 0;
+  double get progress => totalBytes > 0 ? (transferredBytes / totalBytes).clamp(0, 1).toDouble() : 0;
 
   int get percent => (progress * 100).floor();
 
@@ -58,35 +55,26 @@ class TransferTask {
   /// downloads (HTTP Range) can genuinely pause and resume.
   bool get canPause => !isUpload && status.isActive;
   bool get canResume => status == TransferStatus.paused;
-  bool get canRetry =>
-      status == TransferStatus.failed || status == TransferStatus.cancelled;
+  bool get canRetry => status == TransferStatus.failed || status == TransferStatus.cancelled;
   bool get canCancel => status.isActive || status == TransferStatus.paused;
 
   String get partialPath => '$localPath.part';
 
-  TransferTask copyWith({
-    String? localPath,
-    int? totalBytes,
-    int? transferredBytes,
-    TransferStatus? status,
-    String? error,
-    bool clearError = false,
-    String? serverFileName,
-    String? remoteUrl,
-  }) => TransferTask(
-    id: id,
-    type: type,
-    fileName: fileName,
-    localPath: localPath ?? this.localPath,
-    totalBytes: totalBytes ?? this.totalBytes,
-    transferredBytes: transferredBytes ?? this.transferredBytes,
-    status: status ?? this.status,
-    createdAt: createdAt,
-    updatedAt: DateTime.now(),
-    error: clearError ? null : error ?? this.error,
-    serverFileName: serverFileName ?? this.serverFileName,
-    remoteUrl: remoteUrl ?? this.remoteUrl,
-  );
+  TransferTask copyWith({String? localPath, int? totalBytes, int? transferredBytes, TransferStatus? status, String? error, bool clearError = false, String? serverFileName, String? remoteUrl}) =>
+      TransferTask(
+        id: id,
+        type: type,
+        fileName: fileName,
+        localPath: localPath ?? this.localPath,
+        totalBytes: totalBytes ?? this.totalBytes,
+        transferredBytes: transferredBytes ?? this.transferredBytes,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        updatedAt: DateTime.now(),
+        error: clearError ? null : error ?? this.error,
+        serverFileName: serverFileName ?? this.serverFileName,
+        remoteUrl: remoteUrl ?? this.remoteUrl,
+      );
 
   factory TransferTask.fromJson(Map<String, dynamic> json) => TransferTask(
     id: json['id'] as String,
