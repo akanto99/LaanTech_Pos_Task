@@ -47,7 +47,7 @@ class _ServerFilesScreen extends StatelessWidget {
       body: switch (files.status) {
         Status.loading => const Center(child: CircularProgressIndicator()),
         Status.error => ErrorStateView(
-          message: files.message!,
+          message: vm.recoversAutomatically ? '${files.message!}\nThe list will reload automatically when the connection is back.' : files.message!,
           onRetry: vm.fetchFiles,
         ),
         Status.completed => RefreshIndicator(

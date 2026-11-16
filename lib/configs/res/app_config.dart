@@ -14,6 +14,11 @@ class AppConfig {
   static const Duration retryBaseDelay = Duration(seconds: 3);
   static const int maxHistory = 100;
 
+  /// Backoff for automatic reloads after a network failure. Having a network
+  /// (connectivity) does not mean the API is reachable yet, e.g. while DNS or
+  /// a captive portal settles, so a reload that still fails is retried.
+  static const List<Duration> reconnectRetryDelays = [Duration(seconds: 2), Duration(seconds: 5), Duration(seconds: 10)];
+
   /// Mirrors the server whitelist; anything else is rejected with HTTP 415.
   static const List<String> uploadExtensions = [
     'jpg',
