@@ -26,10 +26,7 @@ class DownloadView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => (createViewModel?.call() ?? ServerFilesViewModel())..fetchFiles(),
-      child: const _ServerFilesScreen(),
-    );
+    return ChangeNotifierProvider(create: (_) => (createViewModel?.call() ?? ServerFilesViewModel())..fetchFiles(), child: const _ServerFilesScreen());
   }
 }
 
@@ -44,44 +41,33 @@ class _ServerFilesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Server files'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: vm.fetchFiles,
-          ),
-        ],
+        actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded), onPressed: vm.fetchFiles)],
       ),
-      body: ResPonsiveUi.body(child: switch (files.status) {
-        Status.loading => const Center(child: CircularProgressIndicator()),
-        Status.error => ErrorStateView(
-          message: vm.recoversAutomatically
-              ? '${files.message!}\nThe list will reload automatically when the connection is back.'
-              : files.message!,
-          onRetry: vm.fetchFiles,
-        ),
-        Status.completed => RefreshIndicator(
-          onRefresh: () => vm.fetchFiles(silent: true),
-          child: files.data!.isEmpty
-              ? ListView(
-                  children: [
-                    SizedBox(height: ResPonsiveUi.height(context, 0.1)),
-                    const EmptyStateView(
-                      icon: Icons.folder_open_rounded,
-                      title: 'No files on the server',
-                      message: 'Files you upload will be listed here.',
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  padding: ResPonsiveUi.pagePadding(context),
-                  itemCount: files.data!.length,
-                  separatorBuilder: (_, _) => SizedboxSpaccing.height0125(context),
-                  itemBuilder: (_, index) =>
-                      _ServerFileTile(file: files.data![index]),
-                ),
-        ),
-      }),
+      body: ResPonsiveUi.body(
+        child: switch (files.status) {
+          Status.loading => const Center(child: CircularProgressIndicator()),
+          Status.error => ErrorStateView(
+            message: vm.recoversAutomatically ? '${files.message!}\nThe list will reload automatically when the connection is back.' : files.message!,
+            onRetry: vm.fetchFiles,
+          ),
+          Status.completed => RefreshIndicator(
+            onRefresh: () => vm.fetchFiles(silent: true),
+            child: files.data!.isEmpty
+                ? ListView(
+                    children: [
+                      SizedBox(height: ResPonsiveUi.height(context, 0.1)),
+                      const EmptyStateView(icon: Icons.folder_open_rounded, title: 'No files on the server', message: 'Files you upload will be listed here.'),
+                    ],
+                  )
+                : ListView.separated(
+                    padding: ResPonsiveUi.pagePadding(context),
+                    itemCount: files.data!.length,
+                    separatorBuilder: (_, _) => SizedboxSpaccing.height0125(context),
+                    itemBuilder: (_, index) => _ServerFileTile(file: files.data![index]),
+                  ),
+          ),
+        },
+      ),
     );
   }
 }
@@ -104,17 +90,14 @@ class _ServerFileTile extends StatelessWidget {
   Future<void> _download(BuildContext context) async {
     final error = await context.read<TransferViewModel>().download(file);
     if (!context.mounted) return;
-    error == null
-        ? Utils.flushBarSuccessMessage('Download started', context)
-        : Utils.flushBarErrorMessage(error, context);
+    error == null ? Utils.flushBarSuccessMessage('Download started', context) : Utils.flushBarErrorMessage(error, context);
   }
 
   Future<void> _delete(BuildContext context) async {
     final confirmed = await Utils.confirm(
       context,
       title: 'Delete from server?',
-      message:
-          '"${file.originalName}" will be permanently removed from the server.',
+      message: '"${file.originalName}" will be permanently removed from the server.',
       confirmLabel: 'Delete',
       destructive: true,
     );
@@ -127,16 +110,9 @@ class _ServerFileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final task = context.select<TransferViewModel, TransferTask?>(
-      (vm) => vm.latestDownloadOf(file.name),
-    );
-    final deleting = context.select<ServerFilesViewModel, bool>(
-      (vm) => vm.isDeleting(file.name),
-    );
-    final inFlight =
-        task != null &&
-        task.status != TransferStatus.completed &&
-        task.status != TransferStatus.cancelled;
+    final task = context.select<TransferViewModel, TransferTask?>((vm) => vm.latestDownloadOf(file.name));
+    final deleting = context.select<ServerFilesViewModel, bool>((vm) => vm.isDeleting(file.name));
+    final inFlight = task != null && task.status != TransferStatus.completed && task.status != TransferStatus.cancelled;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -145,10 +121,7 @@ class _ServerFileTile extends StatelessWidget {
             ? () => Navigator.pushNamed(
                 context,
                 RoutesName.videoPlayer,
-                arguments: VideoPlayerArgs(
-                  serverFileName: file.name,
-                  title: file.originalName,
-                ),
+                arguments: VideoPlayerArgs(serverFileName: file.name, title: file.originalName),
               )
             : null,
         child: Padding(
@@ -167,61 +140,29 @@ class _ServerFileTile extends StatelessWidget {
                           file.originalName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.textSize14(
-                            context,
-                            weight: FontWeight.w600,
-                          ),
+                          style: AppTextStyles.textSize14(context, weight: FontWeight.w600),
                         ),
-                        Text(
-                          '${Formatters.fileSize(file.size)} · ${Formatters.dateTime(file.uploadedAt)}',
-                          style: AppTextStyles.textSize12(
-                            context,
-                            color: AppColors.subtitle(context),
-                          ),
-                        ),
+                        Text('${Formatters.fileSize(file.size)} · ${Formatters.dateTime(file.uploadedAt)}', style: AppTextStyles.textSize12(context, color: AppColors.subtitle(context))),
                         if (file.isVideo)
                           Text(
                             'Tap to play',
-                            style: AppTextStyles.textSize12(
-                              context,
-                              weight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
+                            style: AppTextStyles.textSize12(context, weight: FontWeight.w600, color: AppColors.primary),
                           ),
                         if (task?.status == TransferStatus.completed)
                           Text(
                             'Downloaded',
-                            style: AppTextStyles.textSize12(
-                              context,
-                              weight: FontWeight.w600,
-                              color: AppColors.success,
-                            ),
+                            style: AppTextStyles.textSize12(context, weight: FontWeight.w600, color: AppColors.success),
                           ),
                       ],
                     ),
                   ),
-                  if (inFlight)
-                    TransferActions(task: task)
-                  else
-                    IconButton.filledTonal(
-                      tooltip: 'Download',
-                      onPressed: () => _download(context),
-                      icon: const Icon(Icons.download_rounded),
-                    ),
+                  if (inFlight) TransferActions(task: task) else IconButton.filledTonal(tooltip: 'Download', onPressed: () => _download(context), icon: const Icon(Icons.download_rounded)),
                   deleting
                       ? const Padding(
                           padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                         )
-                      : IconButton(
-                          tooltip: 'Delete from server',
-                          onPressed: inFlight ? null : () => _delete(context),
-                          icon: const Icon(Icons.delete_outline_rounded),
-                        ),
+                      : IconButton(tooltip: 'Delete from server', onPressed: inFlight ? null : () => _delete(context), icon: const Icon(Icons.delete_outline_rounded)),
                 ],
               ),
               if (inFlight) ...[
@@ -233,25 +174,15 @@ class _ServerFileTile extends StatelessWidget {
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            minHeight: 6,
-                            value: task.progress,
-                            color: TransferNetworkStyle.progressColorOf(task),
-                          ),
+                          child: LinearProgressIndicator(minHeight: 6, value: task.progress, color: TransferNetworkStyle.progressColorOf(task)),
                         ),
                       ),
                       SizedboxSpaccing.width025(context),
-                      Text(
-                        switch (task.status) {
-                          TransferStatus.paused => 'Paused ${task.percent}%',
-                          TransferStatus.failed => 'Failed ${task.percent}%',
-                          _ => '${task.percent}%',
-                        },
-                        style: AppTextStyles.textSize12(
-                          context,
-                          weight: FontWeight.w600,
-                        ),
-                      ),
+                      Text(switch (task.status) {
+                        TransferStatus.paused => 'Paused ${task.percent}%',
+                        TransferStatus.failed => 'Failed ${task.percent}%',
+                        _ => '${task.percent}%',
+                      }, style: AppTextStyles.textSize12(context, weight: FontWeight.w600)),
                     ],
                   ),
                 ),
@@ -268,15 +199,7 @@ class _ServerFileTile extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Padding(
                       padding: EdgeInsets.only(top: ResPonsiveUi.height(context, 0.0075), right: ResPonsiveUi.width(context, 0.025)),
-                      child: Text(
-                        task.error!,
-                        style: AppTextStyles.textSize12(
-                          context,
-                          color: task.status == TransferStatus.failed
-                              ? AppColors.error
-                              : AppColors.warning,
-                        ),
-                      ),
+                      child: Text(task.error!, style: AppTextStyles.textSize12(context, color: task.status == TransferStatus.failed ? AppColors.error : AppColors.warning)),
                     ),
                   ),
               ],
