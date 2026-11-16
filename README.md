@@ -55,6 +55,8 @@ Built for the **LAAN TECH USA Limited — Android POS Developer** technical asse
 | Multi-file upload with progress | Fully implemented | Streamed from disk; never loaded fully into memory |
 | Large files (over 50 MB) | Fully implemented | Verified with 55–60 MB files against the live server |
 | Server file list, info, delete | Fully implemented | Loading, empty and error states |
+| Server files auto-reload after network loss | Fully implemented | Reloads on reconnect / app resume, with backoff when the network is up but the API is not yet reachable (see [Server files: automatic recovery](#server-files-automatic-recovery-after-network-loss)) |
+| In-app video playback | Fully implemented | Authenticated HTTP Range streaming with a download-first fallback (see [Playing uploaded videos](#playing-uploaded-videos)) |
 | Download with progress | Fully implemented | |
 | HTTP Range resumable download | Fully implemented | Pause/resume, auto-retry and app-restart resume all continue from the partial file |
 | Safe file naming | Fully implemented | `name (1).ext`; existing files are never overwritten |
@@ -65,7 +67,7 @@ Built for the **LAAN TECH USA Limited — Android POS Developer** technical asse
 | Retry with backoff | Fully implemented | Transient errors only; permanent errors fail immediately |
 | Upload pause/resume | **Backend limitation** | The server only accepts a single multipart request, so uploads support *cancel* and *restart* only |
 | iOS background transfers | **Platform limitation / not implemented** | See [iOS limitations](#16-ios-limitations) |
-| Saving to public `Downloads` | **Not implemented** | Files are saved to app-specific external storage (see [Storage](#14-storage)) |
+| Saving to public `Download/LaanTech` | Fully implemented | MediaStore on Android 10+, legacy shared storage on Android 7–9 (see [Storage](#14-storage)) |
 
 ## 3. Technology stack
 
@@ -75,6 +77,9 @@ Built for the **LAAN TECH USA Limited — Android POS Developer** technical asse
 - **Background execution:** `flutter_foreground_task` (Android foreground service with its own Flutter engine)
 - **Notifications:** `flutter_local_notifications`
 - **Secure storage:** `flutter_secure_storage` (Android Keystore-backed)
+- **Public downloads:** local `public_downloads` plugin (Kotlin, `MediaStore.Downloads`)
+- **Connectivity:** `connectivity_plus`
+- **Video:** `video_player` (ExoPlayer / Media3 on Android)
 - **Android:** minSdk 24, target/compile SDK 36
 
 ## 4. Architecture
@@ -140,25 +145,28 @@ lib/
 │   ├── buttons/round_button.dart
 │   ├── res/                         app_config, app_url, color, text_styles
 │   ├── services/
+│   │   ├── connectivity_services/   online/offline changes (connectivity_plus)
 │   │   ├── navigator_services/      navigatorKey + notification deep links
 │   │   ├── notification_services/   per-transfer notifications
 │   │   └── session_expired_services/
-│   ├── utils/                       formatters, routes, utils (flushbar, confirm dialog)
+│   ├── utils/                       file_names, formatters, routes, utils (flushbar, confirm dialog)
 │   ├── validations/auth_validation.dart
 │   └── widgets/                     text field, empty/error states, transfer/* widgets
 ├── data/
 │   ├── app_exceptions.dart
 │   ├── network/                     base_api_services, network_api_service, token_manager
 │   ├── response/                    api_response, status
+│   ├── storage/                     base_download_storage, public_download_storage
 │   └── transfer/                    transfer_manager, transfer_store, transfer_task_handler
-├── model/                           user/session, server_file, transfer/{task, command}
-├── repository/                      auth, file, transfer
+├── model/                           user/session, server_file, transfer/{task, command}, video/{source, args}
+├── repository/                      auth, file, transfer, video
 ├── theme/app_theme.dart
-├── view/                            splash, auth, home, upload, download, transfers
-├── view_model/                      auth, server_files, transfer
+├── view/                            splash, auth, home, upload, download, transfers, video_player
+├── view_model/                      auth, server_files, transfer, video_player
 └── main.dart
+packages/public_downloads/           local Android plugin: MediaStore / legacy public Downloads
 test/                                unit + widget tests
-integration_test/                    on-device test against the live API
+integration_test/                    on-device tests (live API flow, public Downloads)
 ```
 
 ## 6. API integration
@@ -195,13 +203,42 @@ There are no credentials in the code or the repository. Create an account on the
 ## 8. Download implementation
 
 1. **Server files** lists the files with name, size, upload date and type icon, with pull-to-refresh and loading/empty/error states.
-2. **Download** creates a task targeting `<downloads>/<original name>`. If that name is taken by an existing file or another queued download, it becomes `name (1).ext`, `name (2).ext`, and so on. Unsafe filename characters are replaced.
-3. Data streams into `<target>.part`.
+2. **Download** creates a task whose working file is in app-private staging (`<app support>/download_staging/<original name>`). If another queued download already uses that name, it becomes `name (1).ext` so two downloads never share a partial file. Unsafe filename characters are replaced. On Android 7–9 the storage permission is requested at this point (see below).
+3. Data streams into `<staging file>.part`.
    - If the partial file exists, the request sends `Range: bytes=<length>-`.
    - `206` → append.
    - `200` (Range ignored) → restart from zero.
    - `416` → treat as complete if `Content-Range: */total` matches the local length; otherwise discard and restart.
-4. When complete, `.part` is renamed to the final name. A short body (received < expected) is treated as an interruption and resumed.
+4. A short body (received < expected) is treated as an interruption and resumed.
+5. Only a **complete** file is published to `Download/LaanTech/` (see next section) and the staging copy is deleted. The task's local path becomes the public path, e.g. `/storage/emulated/0/Download/LaanTech/products.csv`.
+
+### Saving to Download/LaanTech
+
+Completed downloads are saved in the public **`Internal storage/Download/LaanTech/`** folder, visible in the Files app and over USB. The folder name is `AppConfig.publicDownloadFolder`.
+
+Downloads finish inside the foreground-service isolate, which has its own Flutter engine. A `MethodChannel` registered in `MainActivity` would not exist there, so the native code is a small **local Flutter plugin** (`packages/public_downloads`), which Flutter registers in every engine. The data layer reaches it through `BaseDownloadStorage` → `PublicDownloadStorage`, injected into `TransferManager` (tests use a fake).
+
+| Android | Mechanism | Permission |
+|---|---|---|
+| 10+ (API 29+) | `MediaStore.Downloads` insert with `RELATIVE_PATH = Download/LaanTech/` and `IS_PENDING = 1` while copying, then `IS_PENDING = 0` | **None** |
+| 7–9 (API 24–28) | Copy to the public Downloads directory through a hidden `.name.pending` file, rename, then media scan | `WRITE_EXTERNAL_STORAGE`, declared with `maxSdkVersion="28"` and requested when a download starts |
+
+- **No partial files are exposed.** Partial data lives only in app-private staging; MediaStore keeps the entry pending (hidden) until the copy finishes, and a failed copy deletes the entry.
+- **No overwriting.** A taken name becomes `name (1).ext`, `name (2).ext`, … Files owned by other apps (or a previous install) are not visible to the app on Android 11+, so MediaStore's own unique-name handling is the safety net, and the name MediaStore actually used is read back and stored. Original names and extensions are kept; MIME types come from the extension.
+- **Errors:** missing permission, full disk (`ENOSPC`) and I/O errors become `StorageException`s with clear messages. A failed save keeps the complete partial file, so **Retry** publishes it again without re-downloading (the Range request for a complete file returns `416`).
+- `MANAGE_EXTERNAL_STORAGE` is **not** requested.
+- Publishing copies the file, so a download needs free space for two copies for a moment.
+
+### Playing uploaded videos
+
+Tapping a finished video transfer (Upload screen or Transfer center), the **Play video** button on Transfer details, or a video on the **Server files** screen opens a dedicated player (`VideoPlayerView` → `VideoPlayerViewModel` → `VideoRepository`). Videos are recognised by `AppConfig.videoExtensions` (mp4, mov, mkv, webm, avi) or a `video/*` server type. On video tiles the details screen is one tap away through the ⓘ button.
+
+1. **Probe:** `VideoRepository.streamSource` sends `Range: bytes=0-1` through the shared Dio client. The Bearer interceptor, error mapping and session-expired flow all apply.
+2. **Stream (preferred):** on `206` + `Content-Range`, the server URL is opened with `VideoPlayerController.networkUrl(..., httpHeaders: {Authorization: Bearer …})`. The token is sent **only as a header**: it is never put in the URL and never logged. ExoPlayer then fetches with HTTP Range requests, so seeking (and MP4s whose index is at the end) work without downloading the whole file.
+3. **Download-first fallback:** if the server does not answer Range requests, or the stream fails to initialise, the file is downloaded with the same resumable `downloadFileApi` into `<cache>/video_playback/` with a progress bar, then played from disk. The copy is deleted when the player closes, and leaving the screen cancels the download.
+4. **Errors:** an expired session shows the usual message and re-login dialog. If neither source can be played, the screen says the format or codec is not supported, with a Retry button. A failure mid-playback (e.g. lost connection) shows an error with Retry.
+
+Player controls: play/pause (replay at the end), a seek slider with the buffered range, current position and duration, fullscreen (immersive, rotates to landscape for wide videos and stays portrait for tall ones; Back leaves fullscreen first) and a buffering indicator. Controls auto-hide while playing. The controller, timers and any fallback download are released when the screen closes.
 
 ## 9. Global transfer management
 
@@ -281,9 +318,23 @@ Notes:
 - **Backoff:** up to 5 automatic retries at 3, 6, 12, 24 and 48 s (about 1.5 minutes). For downloads, an attempt that made progress resets the budget, so a long download on a flaky link isn't abandoned while it keeps advancing. Permanent errors are never retried.
 - **Stall detection:** Dio's `sendTimeout` covers the *entire* request body, which would abort large uploads on slow links. Instead, uploads use a progress watchdog and downloads use a per-chunk idle timeout (`AppConfig.transferIdleTimeout`).
 
+### Server files: automatic recovery after network loss
+
+If Server files was opened offline, it used to stay on "No internet connection" until the user tapped Retry. Now `ServerFilesViewModel`:
+
+- listens to `ConnectivityService` (`connectivity_plus`), which emits only real online/offline flips, and **reloads automatically when the connection returns** if it is showing a network-type error. A list loaded before the outage is refreshed in the background and kept if that refresh fails;
+- also re-checks when the app returns to the foreground, because connectivity events can be missed in the background;
+- treats connectivity as a hint, not proof. "Connected" does not mean the API is reachable (DNS still settling, captive portal, server down), so a reload that still fails with a retryable error is retried after 2, 5 and 10 s (`AppConfig.reconnectRetryDelays`) and then waits for the user or the next reconnect. Nothing polls while the device is offline, and permanent errors (4xx) are not retried;
+- shares a single in-flight request between Retry, pull-to-refresh, reconnect and the retry timer, so requests are never duplicated;
+- cancels the connectivity subscription, retry timer and lifecycle observer in `dispose()`. The view model belongs to the screen, so leaving and reopening Server files starts cleanly, and a request that finishes after the screen closed is ignored.
+
+The error view tells the user the list will reload automatically.
+
 ## 14. Storage
 
-- **Downloads:** app-specific external storage, `/storage/emulated/0/Android/data/<package>/files/Downloads/`. It needs no runtime permission on any Android version and can be reached over USB/MTP. The full path is shown on the details screen.
+- **Downloads:** public `Download/LaanTech/` (`/storage/emulated/0/Download/LaanTech/`), see [Saving to Download/LaanTech](#saving-to-downloadlaantech). The full path is shown on the details screen. Files stay there when a transfer is removed from history or the app is uninstalled.
+- **Partial downloads:** app-private `<app support>/download_staging/`, invisible to other apps and deleted after publishing or cancelling. Downloads that were already paused before this change keep their old staging path and are still published to `Download/LaanTech` when they finish.
+- **Video fallback copies:** `<cache>/video_playback/`, deleted when the player closes.
 - **Transfer history:** `transfers.json` in the application support directory.
 - **Session:** the token, username and expiry are kept in `flutter_secure_storage` (Android Keystore).
 - **Picker copies:** kept in the app cache and deleted as described in [Upload implementation](#7-upload-implementation).
@@ -297,6 +348,8 @@ Notes:
 - **Android 15+:** `dataSync` services may run for **6 hours in any 24-hour window**, and the timer resets when the user opens the app. On timeout the service is stopped: downloads stay resumable and uploads are marked for retry.
 - **OEM battery managers** (Xiaomi, Huawei, Oppo and others) may still kill foreground services. Persistence and auto-resume limit the damage, but no app can fully prevent this.
 - **Force stop** from Settings kills the service by design. Transfers resume on the next launch.
+- **Scoped storage (Android 10+):** downloads are written through `MediaStore.Downloads`, which needs no storage permission. The app cannot see files other apps put in `Download/LaanTech`; MediaStore still gives new files unique names, so nothing is overwritten.
+- **Android 7–9:** `WRITE_EXTERNAL_STORAGE` (`maxSdkVersion="28"`) is requested from the UI when a download starts, because the background service has no Activity to ask from. If it is denied, the download is not queued and a message explains why.
 - **Cleartext HTTP:** the mock server is HTTP-only, so cleartext is allowed *only* for its host via `network_security_config.xml`.
 
 ## 16. iOS limitations
@@ -321,6 +374,9 @@ The iOS target was not built or tested, and background transfers are **not imple
 | `file_picker` | System file picker (multi-select, extension filter) |
 | `intl` | Date formatting |
 | `another_flushbar` | In-app messages (same component as the starter kit) |
+| `connectivity_plus` | Online/offline changes for automatic Server files recovery |
+| `video_player` | In-app playback (ExoPlayer on Android) with custom HTTP headers for the Bearer token |
+| `public_downloads` *(local, `packages/`)* | Kotlin plugin for `MediaStore.Downloads` / legacy public Downloads. Written in-repo: it has to be a plugin to run in the service engine, and pub.dev options such as `media_store_plus` replace existing files with the same name |
 | `integration_test` *(dev)* | On-device end-to-end test |
 
 ## 18. Installation, running and building
@@ -347,16 +403,16 @@ For a smaller APK on a single-ABI device or emulator: `flutter build apk --debug
 
 ```bash
 flutter analyze
-flutter test                      # 43 unit and widget tests
+flutter test                      # 69 unit and widget tests
 ```
 
 | Suite | Covers |
 |---|---|
-| `test/data/transfer_manager_test.dart` | Upload success/server reference, retry with backoff, retry limit, permanent errors, manual retry, no upload pause, download pause/resume from partial, cancel cleanup, safe naming, restore after crash, offline command application, history clearing, progress-reset retry budget, temp-copy cleanup |
-| `test/data/network_api_service_test.dart` | Bearer header on protected endpoints only, status → exception mapping (401 session hook, 415, 503, 404), Range resume (206 append, 200 restart, 416 complete), mid-stream connection drop, missing upload source |
-| `test/view_model/*` | `AuthViewModel` (login/register/logout/errors), `TransferViewModel` (snapshot mirroring, stats, upload selection, download enqueue, controls) |
-| `test/repository/auth_repository_test.dart` | Form-encoded credentials, session persistence, logout |
-| `test/view/*`, `test/widgets/*` | Splash routing (no/expired/valid session), login validation, `TransferTile` states and controls, cancel confirmation |
+| `test/data/transfer_manager_test.dart` | Upload success/server reference, retry with backoff, retry limit, permanent errors, manual retry, no upload pause, download pause/resume from partial, cancel cleanup, safe naming (staging and public), partial data kept out of the public folder, failed save → retry publishes without re-downloading, restore after crash, offline command application, history clearing, progress-reset retry budget, temp-copy cleanup |
+| `test/data/network_api_service_test.dart` | Bearer header on protected endpoints only, status → exception mapping (401 session hook, 415, 503, 404), Range resume (206 append, 200 restart, 416 complete), Range-support probe, mid-stream connection drop, missing upload source |
+| `test/view_model/*` | `AuthViewModel` (login/register/logout/errors), `TransferViewModel` (snapshot mirroring, stats, upload selection, download enqueue, controls), `ServerFilesViewModel` (reload on reconnect, no polling offline, backoff when connected but unreachable, retry budget, no retry for 4xx, single in-flight request, silent refresh keeps data, dispose cleanup), `VideoPlayerViewModel` (authenticated stream, download-first when Range is unsupported or the stream fails, unsupported format, session errors, progress, dispose) |
+| `test/repository/*` | `AuthRepository` (form-encoded credentials, session persistence, logout), `VideoRepository` (token only in headers, no-Range fallback, missing session, cached fallback copy) |
+| `test/view/*`, `test/widgets/*` | Splash routing (no/expired/valid session), login validation, `TransferTile` states and controls, cancel confirmation, video tap → player, details button, non-video tap → details |
 
 **Integration test (live server, Android device/emulator).** It logs in through the UI, uploads through the foreground service, downloads from the Server files screen, and compares the bytes. Use your own account; credentials are passed at run time and never stored:
 
@@ -366,6 +422,13 @@ flutter test integration_test/transfer_flow_test.dart -d <device-id> \
 ```
 
 It is skipped when no credentials are provided.
+
+**Public Downloads test (any Android device/emulator, no account needed).** Publishes through the real plugin and checks `Download/LaanTech/` paths and conflict naming:
+
+```bash
+flutter test integration_test/public_download_storage_test.dart -d <device-id>
+adb shell ls /sdcard/Download/LaanTech      # the test files are left there to inspect
+```
 
 ## 20. Verification performed
 
@@ -384,12 +447,31 @@ All of the following ran on an **Android 15 (API 35) emulator against the live m
 - Re-downloading an existing file saved it as `big60 (1).zip`; the original was untouched.
 - **Logout with an active transfer:** confirmation shown, transfer cancelled, partial file deleted, service stopped.
 
+**Public storage, network recovery and video playback** (Android 15 / API 35 emulator):
+
+- `public_download_storage_test.dart` passed. Checked with `adb`, the files are in `/sdcard/Download/LaanTech/`, a second file with the same name became `… (1).csv` with the first untouched, and MediaStore lists both with `relative_path=Download/LaanTech/`, `is_pending=0` and `mime_type=text/comma-separated-values`. No storage permission was granted.
+- `ConnectivityService` on the emulator: turning Wi-Fi and mobile data off and on emitted `false` then `true`.
+- Authenticated playback against a local server that requires `Authorization: Bearer …` and serves Range requests (the live server needs an account, see below). The Range probe passed. ExoPlayer sent the Bearer header on **every** request and used Range requests to read the MP4 index and to seek (`bytes=12739086-`, `bytes=3232-`, …). Playback and a seek to 2.5 s worked. The same request without the header was rejected (401). The download-first fallback file played from disk.
+- `flutter analyze`: no issues. `flutter test`: 69 passed. `flutter build apk --debug`: success.
+
+**Still to test manually on a device, with a real account on the live server:**
+
+1. Download an image, a video and a CSV from Server files → the Files app shows them in `Download/LaanTech/`. Downloading the same file again gives `name (1).ext`.
+2. On an Android 7–9 device: the storage permission prompt appears on the first download, and denying it shows the error message.
+3. Turn on airplane mode, open Server files (offline message), turn airplane mode off → the list loads by itself. Repeat after leaving and reopening the screen.
+4. Upload an MP4, tap it on the Upload screen → it plays. Check seek, fullscreen in both orientations, and Back from fullscreen. Then play a video from Server files.
+5. Regression: background upload/download, pause/resume, notifications and swipe-away still behave as listed above.
+
 Not verified on a physical device: OEM-specific battery killers, the Android 15 six-hour `dataSync` timeout, and session expiry on device (24 h token lifetime). Session-expiry handling is covered by unit tests.
 
 ## 21. Known limitations
 
 - Upload pause/resume is not possible with this backend. Uploads restart from zero after cancellation or interruption.
-- Downloads go to app-specific storage, not the public `Downloads` collection. On Android 11+ that folder is hidden from some file manager apps.
+- Publishing a download copies it from staging into `Download/LaanTech`, so for a moment there are two copies (the staging copy is deleted right after).
+- On Android 11+ the app cannot see files that other apps (or a previous install) put in `Download/LaanTech`. MediaStore's unique naming still prevents overwrites, but the "(n)" number may skip.
+- Removing a download from history does not delete the public file (by design).
+- Video playback streams from the server, even for videos that were downloaded. Formats and codecs are limited to what the device's ExoPlayer supports. If streaming fails for a reason other than the network (e.g. an unsupported codec), the download-first fallback still downloads the file before reporting that it cannot be played.
+- Authenticated playback was verified against a local server with the same auth and Range behaviour, not against the live server (no test account was available).
 - The API has no token refresh or revoke. Sessions last 24 h, after which the user signs in again; background transfers that hit an expired token fail with a clear message.
 - The integrity check compares the final size with `Content-Range`/`Content-Length`. The server's `ETag` is not used with `If-Range`, because server file names are unique and immutable.
 - Transfer history is stored per device and cleared on logout.
@@ -400,7 +482,8 @@ Not verified on a physical device: OEM-specific battery killers, the Android 15 
 
 - Android 14+ **user-initiated data transfer jobs** (native) as an alternative to the `dataSync` foreground service, avoiding the Android 15 six-hour limit.
 - Resumable uploads (chunked or tus protocol), if the backend adds support.
-- Saving completed downloads to public `Downloads` via `MediaStore`, plus "Open file" / share actions.
-- Connectivity-aware scheduling (pause on network loss, resume on reconnect) and Wi-Fi-only mode for large files.
+- "Open file" / share actions for completed downloads (through the stored MediaStore URI).
+- Connectivity-aware transfer scheduling (pause on network loss, resume on reconnect) and Wi-Fi-only mode for large files.
+- Play downloaded videos from the local public copy instead of streaming.
 - Native iOS `URLSession` background transfers via a platform channel.
 - Transfer speed and ETA display, plus checksum validation if the API exposes hashes.
