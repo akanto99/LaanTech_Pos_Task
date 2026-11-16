@@ -6,6 +6,7 @@ import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:laantech_pos_task/configs/services/navigator_services/navigation_service.dart';
 import 'package:laantech_pos_task/configs/services/session_expired_services/session_expired.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
+import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/active_transfers_bar.dart';
 import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
@@ -173,6 +174,27 @@ final _cases = <String, Future<void> Function(WidgetTester)>{
 };
 
 void main() {
+  group('empty states are vertically centered in the space below the app bar', () {
+    final cases = <String, Future<void> Function(WidgetTester)>{
+      'server files': (t) => _pump(t, DownloadView(createViewModel: () => _filesVm(<ServerFileModel>[]))),
+      'transfer center': (t) => _pump(t, const TransfersView(), tasks: const []),
+    };
+    for (final size in const [Size(393, 852), Size(320, 568), Size(800, 1280)]) {
+      for (final entry in cases.entries) {
+        testWidgets('${entry.key} at ${size.width.toInt()}x${size.height.toInt()}', (tester) async {
+          tester.view.physicalSize = size * 2;
+          tester.view.devicePixelRatio = 2;
+          addTearDown(tester.view.reset);
+
+          await entry.value(tester);
+          final area = tester.getRect(find.byType(CustomScrollView));
+          final content = tester.getRect(find.descendant(of: find.byType(EmptyStateView), matching: find.byType(Column)).first);
+          expect((content.center.dy - area.center.dy).abs(), lessThan(1), reason: 'content centre ${content.center.dy} vs area centre ${area.center.dy}');
+        });
+      }
+    }
+  });
+
   for (final screen in _screens.entries) {
     group(screen.key, () {
       for (final entry in _cases.entries) {

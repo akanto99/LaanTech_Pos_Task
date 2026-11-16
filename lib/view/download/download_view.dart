@@ -53,10 +53,14 @@ class _ServerFilesScreen extends StatelessWidget {
           Status.completed => RefreshIndicator(
             onRefresh: () => vm.fetchFiles(silent: true),
             child: files.data!.isEmpty
-                ? ListView(
-                    children: [
-                      SizedBox(height: ResPonsiveUi.height(context, 0.1)),
-                      const EmptyStateView(icon: Icons.folder_open_rounded, title: 'No files on the server', message: 'Files you upload will be listed here.'),
+                // Centered in the space left; still scrollable for pull-to-refresh.
+                ? const CustomScrollView(
+                    physics: AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: EmptyStateView(icon: Icons.folder_open_rounded, title: 'No files on the server', message: 'Files you upload will be listed here.'),
+                      ),
                     ],
                   )
                 : ListView.separated(

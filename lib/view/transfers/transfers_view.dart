@@ -94,15 +94,19 @@ class _TransfersViewState extends State<TransfersView> {
             child: RefreshIndicator(
               onRefresh: vm.refresh,
               child: visible.isEmpty
-                  ? ListView(
-                      children: [
-                        SizedBox(height: ResPonsiveUi.height(context, 0.1)),
-                        EmptyStateView(
-                          icon: Icons.swap_vert_rounded,
-                          title: 'Nothing here',
-                          message: _filter == _Filter.all
-                              ? 'Uploads and downloads will be tracked here.'
-                              : 'No ${_filter.label.toLowerCase()} transfers.',
+                  // Centered in the space left; still scrollable for pull-to-refresh.
+                  ? CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: EmptyStateView(
+                            icon: Icons.swap_vert_rounded,
+                            title: 'Nothing here',
+                            message: _filter == _Filter.all
+                                ? 'Uploads and downloads will be tracked here.'
+                                : 'No ${_filter.label.toLowerCase()} transfers.',
+                          ),
                         ),
                       ],
                     )
