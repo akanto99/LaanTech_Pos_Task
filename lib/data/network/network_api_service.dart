@@ -24,9 +24,13 @@ class NetworkApiService extends BaseApiServices {
   /// Set by the UI isolate; fired when an authenticated request is rejected.
   static void Function()? onSessionExpired;
 
-  static const _publicEndpoints = {AppUrl.token, AppUrl.register};
+  static const _publicEndpoints = {
+    AppUrl.token,
+    AppUrl.register,
+    AppUrl.baseUrl,
+  };
   static const _stalled = 'stalled';
-  static const _stalledError = FetchDataException(
+  static const _stalledError = NetworkException(
     'The transfer stalled because the network is too slow or unavailable.',
   );
 
@@ -101,16 +105,27 @@ class NetworkApiService extends BaseApiServices {
     required String savePath,
     required TransferProgress onProgress,
     required CancelToken cancelToken,
+    String? expectedEtag,
+    void Function(String etag)? onEtag,
   }) async {
     final file = File(savePath);
     var offset = await file.exists() ? await file.length() : 0;
+    // If-Range needs a strong validator; a weak one would make it always fail.
+    final ifRange =
+        offset > 0 && expectedEtag != null && !expectedEtag.startsWith('W/')
+        ? expectedEtag
+        : null;
     try {
       final response = await _dio.get<ResponseBody>(
         url,
         cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.stream,
-          headers: {if (offset > 0) HttpHeaders.rangeHeader: 'bytes=$offset-'},
+          headers: {
+            if (offset > 0) HttpHeaders.rangeHeader: 'bytes=$offset-',
+            // The server sends the whole file (200) if it changed since.
+            HttpHeaders.ifRangeHeader: ?ifRange,
+          },
           validateStatus: (code) =>
               code == HttpStatus.ok ||
               code == HttpStatus.partialContent ||
@@ -120,6 +135,7 @@ class NetworkApiService extends BaseApiServices {
 
       if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
         if (_totalFromContentRange(response) == offset) {
+          _discardBody(response);
           onProgress(offset, offset);
           return;
         }
@@ -128,7 +144,25 @@ class NetworkApiService extends BaseApiServices {
           'The partial download was invalid and will restart.',
         );
       }
+      final etag = response.headers.value(HttpHeaders.etagHeader);
+      if (response.statusCode == HttpStatus.partialContent) {
+        // Never append unless the server confirms the exact byte range
+        // requested, from the same version of the file.
+        final range = _parseContentRange(response);
+        final changed =
+            expectedEtag != null && etag != null && etag != expectedEtag;
+        if (range == null || range.start != offset || changed) {
+          _discardBody(response);
+          await file.delete();
+          throw FetchDataException(
+            changed
+                ? 'The file changed on the server. The download will restart.'
+                : 'The server returned an unexpected byte range. The download will restart.',
+          );
+        }
+      }
       if (response.statusCode == HttpStatus.ok) offset = 0;
+      if (etag != null) onEtag?.call(etag);
 
       final total =
           _totalFromContentRange(response) ?? _contentLength(response, offset);
@@ -162,9 +196,31 @@ class NetworkApiService extends BaseApiServices {
     } on IOException {
       // A dropped connection mid-body surfaces as a raw socket/HTTP error
       // from the response stream rather than a DioException.
-      throw const FetchDataException(
+      throw const NetworkException(
         'The connection was interrupted. The download will resume.',
       );
+    }
+  }
+
+  @override
+  Future<bool> isServerReachable() async {
+    final cancelToken = CancelToken();
+    final timer = Timer(AppConfig.reachabilityTimeout, cancelToken.cancel);
+    try {
+      // Any HTTP answer, even an error status, proves the server is reachable.
+      await _dio.head<void>(
+        AppUrl.baseUrl,
+        cancelToken: cancelToken,
+        options: Options(
+          validateStatus: (_) => true,
+          receiveTimeout: AppConfig.reachabilityTimeout,
+        ),
+      );
+      return true;
+    } on DioException {
+      return false;
+    } finally {
+      timer.cancel();
     }
   }
 
@@ -175,11 +231,15 @@ class NetworkApiService extends BaseApiServices {
       final response = await _dio.get<ResponseBody>(
         url,
         cancelToken: cancelToken,
-        options: Options(responseType: ResponseType.stream, headers: {HttpHeaders.rangeHeader: 'bytes=0-1'}),
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {HttpHeaders.rangeHeader: 'bytes=0-1'},
+        ),
       );
       // Only the status and headers matter; drop the body (the whole file on a 200).
       unawaited(response.data?.stream.listen(null, onError: (_) {}).cancel());
-      return response.statusCode == HttpStatus.partialContent && response.headers.value(HttpHeaders.contentRangeHeader) != null;
+      return response.statusCode == HttpStatus.partialContent &&
+          response.headers.value(HttpHeaders.contentRangeHeader) != null;
     } on DioException catch (e) {
       throw _mapDioException(e);
     } finally {
@@ -194,6 +254,18 @@ class NetworkApiService extends BaseApiServices {
       throw _mapDioException(e);
     }
   }
+
+  /// `Content-Range: bytes <start>-<end>/<total|*>`.
+  ({int start, int end})? _parseContentRange(Response<dynamic> response) {
+    final match = RegExp(r'^bytes (\d+)-(\d+)/(\d+|\*)$').firstMatch(
+      response.headers.value(HttpHeaders.contentRangeHeader)?.trim() ?? '',
+    );
+    if (match == null) return null;
+    return (start: int.parse(match[1]!), end: int.parse(match[2]!));
+  }
+
+  void _discardBody(Response<ResponseBody> response) =>
+      unawaited(response.data?.stream.listen(null, onError: (_) {}).cancel());
 
   int? _totalFromContentRange(Response<dynamic> response) {
     final range = response.headers.value(HttpHeaders.contentRangeHeader);
@@ -213,11 +285,11 @@ class NetworkApiService extends BaseApiServices {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.transformTimeout:
-        return const FetchDataException(
+        return const NetworkException(
           'The connection timed out. Please check your network and try again.',
         );
       case DioExceptionType.connectionError:
-        return const FetchDataException(
+        return const NetworkException(
           'No internet connection. Please check your network.',
         );
       case DioExceptionType.cancel:
@@ -233,11 +305,11 @@ class NetworkApiService extends BaseApiServices {
         if (error is AppException) return error;
         if (error is FileSystemException) return _mapFileSystemException(error);
         if (error is SocketException) {
-          return const FetchDataException(
+          return const NetworkException(
             'No internet connection. Please check your network.',
           );
         }
-        return const FetchDataException(
+        return const NetworkException(
           'The connection was interrupted. Please try again.',
         );
     }

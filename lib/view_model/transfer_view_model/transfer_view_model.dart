@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
+import 'package:laantech_pos_task/model/transfer/network_health.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/repository/transfer_repository/transfer_repository.dart';
@@ -40,6 +41,9 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
     return total > 0 ? done / total : 0;
   }
 
+  /// The worst network condition among running transfers, for app-wide banners.
+  NetworkHealth get activeNetworkHealth => NetworkHealth.worstOf(_tasks.where((task) => task.status == TransferStatus.running).map((task) => task.networkHealth));
+
   TransferTask? byId(String id) => _tasks.where((task) => task.id == id).firstOrNull;
 
   TransferTask? latestDownloadOf(String serverFileName) => _tasks.where((t) => !t.isUpload && t.serverFileName == serverFileName).firstOrNull;
@@ -71,6 +75,10 @@ class TransferViewModel with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<String?> download(ServerFileModel file) async {
+    final existing = latestDownloadOf(file.name);
+    if (existing != null && !existing.status.isFinished) {
+      return '"${file.originalName}" is already being downloaded.';
+    }
     try {
       final task = await _repository.createDownload(file);
       await _repository.dispatch(TransferCommand(TransferAction.enqueue, tasks: [task]));

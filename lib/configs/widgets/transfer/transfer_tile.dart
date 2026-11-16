@@ -4,6 +4,7 @@ import 'package:laantech_pos_task/configs/res/text_styles.dart';
 import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
 import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indicator.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
@@ -99,7 +100,7 @@ class TransferTile extends StatelessWidget {
                                   task.totalBytes <= 0
                               ? null
                               : task.progress,
-                          color: TransferStatusChip.colorOf(task.status),
+                          color: TransferNetworkStyle.progressColorOf(task),
                         ),
                       ),
                     ),
@@ -114,6 +115,10 @@ class TransferTile extends StatelessWidget {
                     const SizedBox(width: 6),
                   ],
                 ),
+                if (TransferNetworkStyle.appliesTo(task)) ...[
+                  const SizedBox(height: 6),
+                  TransferNetworkIndicator(task: task),
+                ],
               ],
               if (task.error != null) ...[
                 const SizedBox(height: 8),

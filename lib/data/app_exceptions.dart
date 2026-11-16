@@ -15,6 +15,13 @@ class FetchDataException extends AppException {
   const FetchDataException(super.message) : super(retryable: true);
 }
 
+/// The network itself failed (no route, connection lost, timed out or
+/// stalled), as opposed to the server answering with an error. Transfers wait
+/// for a usable connection before retrying these.
+class NetworkException extends FetchDataException {
+  const NetworkException(super.message);
+}
+
 class BadRequestException extends AppException {
   const BadRequestException(super.message);
 }

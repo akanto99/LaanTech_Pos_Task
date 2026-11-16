@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:laantech_pos_task/configs/services/connectivity_services/connectivity_service.dart';
 import 'package:laantech_pos_task/data/app_exceptions.dart';
 import 'package:laantech_pos_task/data/response/status.dart';
 import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
 import 'package:laantech_pos_task/repository/file_repository/file_repository.dart';
 import 'package:laantech_pos_task/view_model/server_files_view_model/server_files_view_model.dart';
+
+import '../helpers/fake_connectivity_service.dart';
 
 const _offline = FetchDataException('No internet connection. Please check your network.');
 
@@ -28,23 +29,6 @@ class FakeFileRepository implements FileRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
-}
-
-class FakeConnectivityService implements ConnectivityService {
-  final controller = StreamController<bool>.broadcast();
-  bool online = true;
-  bool get hasListener => controller.hasListener;
-
-  void emit(bool value) {
-    online = value;
-    controller.add(value);
-  }
-
-  @override
-  Stream<bool> get onlineChanges => controller.stream;
-
-  @override
-  Future<bool> get isOnline async => online;
 }
 
 void main() {

@@ -6,7 +6,7 @@ import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
-import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indicator.dart';
 import 'package:laantech_pos_task/data/response/status.dart';
 import 'package:laantech_pos_task/model/server_file/server_file_model.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
@@ -230,7 +230,7 @@ class _ServerFileTile extends StatelessWidget {
                           child: LinearProgressIndicator(
                             minHeight: 6,
                             value: task.progress,
-                            color: TransferStatusChip.colorOf(task.status),
+                            color: TransferNetworkStyle.progressColorOf(task),
                           ),
                         ),
                       ),
@@ -249,6 +249,14 @@ class _ServerFileTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (TransferNetworkStyle.appliesTo(task))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 10),
+                      child: TransferNetworkIndicator(task: task),
+                    ),
+                  ),
                 if (task.error != null)
                   Align(
                     alignment: Alignment.centerLeft,

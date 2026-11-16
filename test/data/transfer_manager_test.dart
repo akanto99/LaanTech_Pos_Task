@@ -43,6 +43,8 @@ class FakeTransferApi implements BaseApiServices {
     required String savePath,
     required TransferProgress onProgress,
     required CancelToken cancelToken,
+    String? expectedEtag,
+    void Function(String etag)? onEtag,
   }) async {
     downloadCalls++;
     final file = File(savePath);
@@ -116,7 +118,7 @@ void main() {
     updatedAt: DateTime.now(),
   );
 
-  TransferTask download(String id, {String name = 'report.pdf'}) =>
+  TransferTask download(String id, {String name = 'report.pdf', String serverFileName = 'report_ab12.pdf'}) =>
       TransferTask(
         id: id,
         type: TransferType.download,
@@ -127,7 +129,7 @@ void main() {
         status: TransferStatus.pending,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        serverFileName: 'report_ab12.pdf',
+        serverFileName: serverFileName,
       );
 
   TransferManager createManager() => TransferManager(
@@ -351,8 +353,9 @@ void main() {
 
   test('existing file names are never overwritten', () async {
     final existing = File('${root.path}/public/report.pdf')..createSync(recursive: true)..writeAsStringSync('existing');
+    // Two different server files that were both uploaded as "report.pdf".
     await enqueue(download('d1'));
-    await enqueue(download('d2'));
+    await enqueue(download('d2', serverFileName: 'report_cd34.pdf'));
 
     final first = await settle('d1');
     final second = await settle('d2');

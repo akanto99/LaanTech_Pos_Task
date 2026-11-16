@@ -65,6 +65,7 @@ Built for the **LAAN TECH USA Limited — Android POS Developer** technical asse
 | Android foreground service | Fully implemented | `dataSync` type, own isolate, survives swipe-away |
 | Notifications and tap navigation | Fully implemented | Started, progress, paused, completed, failed |
 | Retry with backoff | Fully implemented | Transient errors only; permanent errors fail immediately |
+| Network health monitoring and recovery | Fully implemented | Good / poor / stalled / connection lost / reconnecting / resumed on every transfer screen and in notifications; waits for the network and a reachable server, then retries with backoff (see [Network health and transfer recovery](#network-health-and-transfer-recovery)) |
 | Upload pause/resume | **Backend limitation** | The server only accepts a single multipart request, so uploads support *cancel* and *restart* only |
 | iOS background transfers | **Platform limitation / not implemented** | See [iOS limitations](#16-ios-limitations) |
 | Saving to public `Download/LaanTech` | Fully implemented | MediaStore on Android 10+, legacy shared storage on Android 7–9 (see [Storage](#14-storage)) |
@@ -277,12 +278,13 @@ Centralised in `NotificationService`, shared by both isolates.
 | Event | Notification |
 |---|---|
 | Started / progress | Ongoing, silent, progress bar (`transfer_progress` channel, low importance) |
-| Paused | Non-ongoing "Download paused · N%" |
+| Paused | Non-ongoing "Download paused · N%"; "Download paused due to connection loss" when the network stayed down too long |
+| Network state (running) | Same notification, updated in place: "Uploading…/Downloading… · N% · speed", "Poor network connection · N%", "Network stalled · N%", "Waiting for network", "Reconnecting…", "Resuming download…" / "Restarting upload…" |
 | Completed | Persistent "Upload/Download complete" (`transfer_results` channel, high importance) |
 | Failed | "Upload/Download failed: reason" |
-| Service | "Transferring files · N active · P%" (foreground-service channel) |
+| Service | "Transferring files · N active · P%", plus "Waiting for network" / "Poor network connection" when relevant (foreground-service channel) |
 
-- **Throttling:** progress notifications update at most once per second per transfer, and only when the percentage changes. The UI snapshot is throttled to 500 ms.
+- **Throttling:** progress notifications update at most once per second per transfer, and only when the percentage changes; a change of network state updates immediately. Each transfer keeps a single notification id, so state changes never create duplicates. The UI snapshot is throttled to 500 ms.
 - **Navigation:** tapping a transfer notification opens **Transfer details** for that transfer. This works both when the app is running and from a cold start, using the launch payload and a pending route consumed after the splash/session check. Tapping the service notification opens the app and, if the UI is already running, navigates to the **Transfer center** (this path was not verified on a device).
 - **Permissions:** `POST_NOTIFICATIONS` is requested on Android 13+ before the first transfer starts. If it's denied, transfers still run, but notifications are hidden by the OS.
 
@@ -303,8 +305,8 @@ All failures become typed `AppException`s in `NetworkApiService`. Each one has a
 
 | Condition | Message (example) | Retried automatically |
 |---|---|---|
-| No connection / connection dropped mid-transfer | "No internet connection…" / "The connection was interrupted…" | Yes |
-| Timeout / stalled transfer (no bytes for 60 s) | "The connection timed out…" / "The transfer stalled…" | Yes |
+| No connection / connection dropped mid-transfer | "No internet connection…" / "The connection was interrupted…" (`NetworkException`) | Yes, after the network returns and the server answers |
+| Timeout / stalled transfer (no bytes for 60 s) | "The connection timed out…" / "The transfer stalled…" (`NetworkException`) | Yes, after a reachability check |
 | 5xx, 408, 429 | "Server is temporarily unavailable (503)…" | Yes |
 | 401/403 with a token | Session-expired dialog → sign in again | No |
 | 401 on login | Server message ("Invalid username or password") | No |
@@ -315,8 +317,63 @@ All failures become typed `AppException`s in `NetworkApiService`. Each one has a
 | Unexpected termination | Downloads resume on next launch; uploads are marked for retry | — |
 
 Notes:
-- **Backoff:** up to 5 automatic retries at 3, 6, 12, 24 and 48 s (about 1.5 minutes). For downloads, an attempt that made progress resets the budget, so a long download on a flaky link isn't abandoned while it keeps advancing. Permanent errors are never retried.
+- **Backoff:** up to 5 automatic retries at 3, 6, 12, 24 and 48 s (capped at 60 s). For downloads, an attempt that made progress resets the budget, so a long download on a flaky link isn't abandoned while it keeps advancing. Failures caused by losing the network do not use the budget at all (see below). Permanent errors are never retried.
 - **Stall detection:** Dio's `sendTimeout` covers the *entire* request body, which would abort large uploads on slow links. Instead, uploads use a progress watchdog and downloads use a per-chunk idle timeout (`AppConfig.transferIdleTimeout`).
+
+### Network health and transfer recovery
+
+A slow network, a stalled transfer and a lost connection are different situations, so they are detected and shown separately. A slow but working connection never pauses a transfer.
+
+**Design.** The measurement happens where the bytes move, in the transfer engine inside the foreground-service isolate, never in widgets:
+
+| Piece | Role |
+|---|---|
+| `NetworkHealth` (`model/transfer/network_health.dart`) | `good`, `resumed`, `poor`, `stalled`, `reconnecting`, `offline`, ordered by severity |
+| `ThroughputTracker` (`data/transfer/`) | Per attempt: real bytes over elapsed time → speed and good / poor / stalled |
+| `TransferNetworkMonitor` (`data/transfer/`) | The isolate's **only** connectivity listener (`ConnectivityService` / `connectivity_plus`) plus a shared, de-duplicated server reachability check |
+| `TransferManager` | Waits, retries and resumes; writes `networkHealth` and `bytesPerSecond` onto the `TransferTask` |
+
+The health and speed travel with each task in the existing snapshots, so the Upload screen, Server files, Transfer center, Home, Transfer details, the app-wide bar and the notifications all show the same state from one source. Progress (`transferredBytes`) is a separate field and is never changed by health.
+
+| State | Progress bar | Indicator | Transfer |
+|---|---|---|---|
+| Good | Normal color | green "Good connection · 1.2 MB/s" | Running |
+| Poor | Amber | "Poor connection · 20 KB/s" | Still running |
+| Stalled | Amber | "Stalled · no data received" | Still running; aborted only after 60 s without data |
+| Connection lost | Red | "Connection lost · waiting for network" | Not sending; last confirmed progress kept |
+| Reconnecting | Amber | "Reconnecting…" | Checking the server before retrying |
+| Resumed | Normal color | green "Transfer resumed" (download) / "Upload restarted" (upload) | Running again; shown for 4 s |
+| Failed | Red (status) | — | Existing failed state and message |
+
+**Poor network detection.** On every tick (1 s) the rate is the bytes moved over a sliding 8 s window, measured up to *now*, so the rate decays when data stops instead of freezing at its last value. Below 32 KiB/s it is *poor*; it must climb back above 64 KiB/s to be *good* again (hysteresis, so it doesn't flicker). The first 3 s of an attempt are not classified, because of TCP slow start and the burst into the socket buffer. No new bytes for 10 s while online is *stalled*. An upload that has sent everything and is waiting for the server's reply is not a stall. The tick only updates a task when its state changes or its speed moves by more than 10%. Thresholds are in `AppConfig`.
+
+**Connection loss detection.**
+- `connectivity_plus` reporting no network marks running transfers *Connection lost* immediately. The request is aborted only if its data has also stopped for 10 s, so a brief blip (or a Wi-Fi → mobile handover) does not kill a transfer that is still moving.
+- A socket error, timeout or stall mid-transfer is a `NetworkException`, unlike a 5xx, which is a server error.
+- Having Wi-Fi does not mean the internet works: after connectivity returns, a lightweight `HEAD` to the server (any HTTP status counts, no token) must succeed before the transfer is retried.
+
+**Automatic retry strategy.**
+1. While the device is offline nothing is sent, not even reachability checks. The wait is event driven.
+2. Once connectivity returns: *Reconnecting…* → reachability check. If the server does not answer, it is checked again with exponential backoff (3 s, 6 s, 12 s … capped at 60 s). Concurrent transfers share one check.
+3. Once the server answers, the transfer starts again (*Resumed*).
+4. Failures caused by losing the network do not use up the retry budget. Network errors while the network looks fine do (5 attempts, exponential backoff), so a link that keeps failing still ends in a clear *Failed*.
+5. If the network stays unusable for 30 minutes, a download is **paused** ("Download paused due to connection loss", resumable later) and an upload **fails** with a message to retry. The foreground service then stops instead of running indefinitely.
+6. One run loop per transfer: pausing and resuming (or retrying) while a transfer waits for the network can never produce two requests for the same transfer.
+
+**Upload resumability (backend limitation).** The server allows only `GET, POST, DELETE, OPTIONS` (checked with `OPTIONS /upload`). It has no `PUT`/`PATCH`, no `Content-Range` uploads and no tus headers; `POST /upload` accepts only a single multipart request. An upload therefore **cannot resume from a byte offset**, and the app does not claim it can:
+- While waiting for the network, the last confirmed progress stays on screen with "…this upload will restart from the beginning".
+- When the network returns, the upload restarts from 0%. The indicator says "Upload restarted" and the notification says "Restarting upload…".
+- **No duplicate server files:** if a previous attempt had sent the whole body but the response was lost, the retry first lists the server files. If one has the same original name and size and was uploaded since then (with 2 minutes' tolerance for clock differences), and no other transfer already refers to it, the app adopts it instead of uploading again.
+
+**Download Range support and fallback.** The server answers `Range` with `206` + `Content-Range` and sends an `ETag`. A resumed download:
+- sends `Range: bytes=<partial length>-` and, when the stored `ETag` is strong, `If-Range`;
+- **appends only if** the response is `206` *and* `Content-Range` starts exactly at the partial length *and* the `ETag` is unchanged. Otherwise the partial file is discarded and the download restarts cleanly, so data from two versions is never mixed;
+- `200` (Range ignored) → restart from zero, overwriting the partial file. `416` → complete if `Content-Range: */total` matches;
+- partial data stays in private staging; only a complete file is published to `Download/LaanTech` (see [Saving to Download/LaanTech](#saving-to-downloadlaantech)).
+
+Duplicate downloads are prevented in the engine (the same server file cannot be queued twice while one is queued, running or paused) and in the UI.
+
+**Android background limitations.** All of this runs in the `dataSync` foreground service, so it keeps working with the app minimised or swiped away. The connectivity listener lives in the service's own engine. While the transfer waits for the network, the service stays alive, but no longer than the 30-minute limit above. Doze, OEM battery managers and the Android 15 six-hour `dataSync` budget (see [Android platform restrictions](#15-android-platform-restrictions)) still apply. If the service is stopped while a download waits, the partial file is kept and resumes on the next start.
 
 ### Server files: automatic recovery after network loss
 
@@ -403,16 +460,18 @@ For a smaller APK on a single-ABI device or emulator: `flutter build apk --debug
 
 ```bash
 flutter analyze
-flutter test                      # 69 unit and widget tests
+flutter test                      # 102 unit and widget tests
 ```
 
 | Suite | Covers |
 |---|---|
 | `test/data/transfer_manager_test.dart` | Upload success/server reference, retry with backoff, retry limit, permanent errors, manual retry, no upload pause, download pause/resume from partial, cancel cleanup, safe naming (staging and public), partial data kept out of the public folder, failed save → retry publishes without re-downloading, restore after crash, offline command application, history clearing, progress-reset retry budget, temp-copy cleanup |
-| `test/data/network_api_service_test.dart` | Bearer header on protected endpoints only, status → exception mapping (401 session hook, 415, 503, 404), Range resume (206 append, 200 restart, 416 complete), Range-support probe, mid-stream connection drop, missing upload source |
+| `test/data/network_api_service_test.dart` | Bearer header on protected endpoints only, status → exception mapping (401 session hook, 415, 503, 404), Range resume (206 append, 200 restart, 416 complete), Range-support probe, mid-stream connection drop, missing upload source, **206 with a wrong start or no `Content-Range` is never appended, changed `ETag` discards the partial file, `If-Range` only with strong `ETag`s, network vs server errors, reachability check** |
+| `test/data/transfer_recovery_test.dart` | Real `TransferManager` + `TransferNetworkMonitor` with scripted connectivity: nothing sent while offline, reconnecting with backoff until the server answers, connection lost mid-download keeps progress and resumes from the partial file (progress never goes backwards), connection lost mid-upload keeps progress while waiting then restarts from 0, lost upload response adopts the server copy (no duplicate) or uploads again when there is none, pause/resume while waiting never sends two requests, offline failures don't use the retry budget, give-up pauses downloads / fails uploads, duplicate download enqueue ignored |
+| `test/data/throughput_tracker_test.dart`, `transfer_network_monitor_test.dart` | Good / poor / stalled classification, warm-up, hysteresis, decay when data stops, awaiting-response is not a stall, resumed notice; single connectivity listener, shared reachability check, missing plugin fallback |
 | `test/view_model/*` | `AuthViewModel` (login/register/logout/errors), `TransferViewModel` (snapshot mirroring, stats, upload selection, download enqueue, controls), `ServerFilesViewModel` (reload on reconnect, no polling offline, backoff when connected but unreachable, retry budget, no retry for 4xx, single in-flight request, silent refresh keeps data, dispose cleanup), `VideoPlayerViewModel` (authenticated stream, download-first when Range is unsupported or the stream fails, unsupported format, session errors, progress, dispose) |
 | `test/repository/*` | `AuthRepository` (form-encoded credentials, session persistence, logout), `VideoRepository` (token only in headers, no-Range fallback, missing session, cached fallback copy) |
-| `test/view/*`, `test/widgets/*` | Splash routing (no/expired/valid session), login validation, `TransferTile` states and controls, cancel confirmation, video tap → player, details button, non-video tap → details |
+| `test/view/*`, `test/widgets/*` | Splash routing (no/expired/valid session), login validation, `TransferTile` states and controls, cancel confirmation, video tap → player, details button, non-video tap → details, **network indicator and progress color per state, percentage unchanged by health, notification wording per state** |
 
 **Integration test (live server, Android device/emulator).** It logs in through the UI, uploads through the foreground service, downloads from the Server files screen, and compares the bytes. Use your own account; credentials are passed at run time and never stored:
 
@@ -452,7 +511,20 @@ All of the following ran on an **Android 15 (API 35) emulator against the live m
 - `public_download_storage_test.dart` passed. Checked with `adb`, the files are in `/sdcard/Download/LaanTech/`, a second file with the same name became `… (1).csv` with the first untouched, and MediaStore lists both with `relative_path=Download/LaanTech/`, `is_pending=0` and `mime_type=text/comma-separated-values`. No storage permission was granted.
 - `ConnectivityService` on the emulator: turning Wi-Fi and mobile data off and on emitted `false` then `true`.
 - Authenticated playback against a local server that requires `Authorization: Bearer …` and serves Range requests (the live server needs an account, see below). The Range probe passed. ExoPlayer sent the Bearer header on **every** request and used Range requests to read the MP4 index and to seek (`bytes=12739086-`, `bytes=3232-`, …). Playback and a seek to 2.5 s worked. The same request without the header was rejected (401). The download-first fallback file played from disk.
-- `flutter analyze`: no issues. `flutter test`: 69 passed. `flutter build apk --debug`: success.
+- `flutter analyze`: no issues. `flutter test`: 69 passed (102 after the network health work). `flutter build apk --debug`: success.
+
+**Network health and recovery** (Android 15 / API 35 emulator; real `TransferManager`, `TransferNetworkMonitor`, `connectivity_plus`, Dio, MediaStore storage and notifications; requests redirected to a local server that implements the same Range/`ETag` behaviour with a controllable rate, because the live server needs an account; Wi-Fi and mobile data switched off and on with `adb shell svc`):
+
+| Step | Observed |
+|---|---|
+| 40 MB download at 2 MB/s | *good*; notification "Downloading… · 17% · 1.3 MB/s" |
+| Server slowed to 12 KB/s | *poor* after the window filled (measured 11 KB/s); notification "Poor network connection · 22% · 10.8 KB/s"; download kept running |
+| Wi-Fi + data off | *Connection lost*, progress held at 9,371,648 bytes (22%); notification "Waiting for network"; no requests sent |
+| Network on | *Reconnecting* → reachability `HEAD` → *Resumed*; server log `Range: bytes=9371648-` with `If-Range: "<etag>"`; notification "Resuming download…" → *good* at 1.5 MB/s |
+| Completion | Published to `/sdcard/Download/LaanTech/`; SHA-1 identical to the server file |
+| 12 MB upload, network off mid-way | *Connection lost* with progress held at 9%, message says it will restart from the beginning; on reconnect "Restarting upload…" from 0% → completed |
+
+Two findings from this run are recorded under [Known limitations](#21-known-limitations): upload throughput is measured at the socket, and a socket error can arrive a moment before the "offline" event. The wording for that second case was corrected after the run ("Connection interrupted…" instead of "Network is back…") and is covered by the unit tests, but the emulator run was not repeated.
 
 **Still to test manually on a device, with a real account on the live server:**
 
@@ -461,6 +533,11 @@ All of the following ran on an **Android 15 (API 35) emulator against the live m
 3. Turn on airplane mode, open Server files (offline message), turn airplane mode off → the list loads by itself. Repeat after leaving and reopening the screen.
 4. Upload an MP4, tap it on the Upload screen → it plays. Check seek, fullscreen in both orientations, and Back from fullscreen. Then play a video from Server files.
 5. Regression: background upload/download, pause/resume, notifications and swipe-away still behave as listed above.
+6. Network health on a physical phone, through the foreground service, against the live server:
+   - throttle the network (developer options or a slow hotspot) during a large upload and a large download → *Poor connection*;
+   - switch on airplane mode → *Connection lost* with progress held;
+   - switch it off → *Reconnecting* → resumed download / restarted upload;
+   - check the notification shade at each step, and repeat with the app swiped away.
 
 Not verified on a physical device: OEM-specific battery killers, the Android 15 six-hour `dataSync` timeout, and session expiry on device (24 h token lifetime). Session-expiry handling is covered by unit tests.
 
@@ -473,7 +550,12 @@ Not verified on a physical device: OEM-specific battery killers, the Android 15 
 - Video playback streams from the server, even for videos that were downloaded. Formats and codecs are limited to what the device's ExoPlayer supports. If streaming fails for a reason other than the network (e.g. an unsupported codec), the download-first fallback still downloads the file before reporting that it cannot be played.
 - Authenticated playback was verified against a local server with the same auth and Range behaviour, not against the live server (no test account was available).
 - The API has no token refresh or revoke. Sessions last 24 h, after which the user signs in again; background transfers that hit an expired token fail with a clear message.
-- The integrity check compares the final size with `Content-Range`/`Content-Length`. The server's `ETag` is not used with `If-Range`, because server file names are unique and immutable.
+- The integrity check compares the final size with `Content-Range`/`Content-Length` and, for resumed downloads, the start of `Content-Range` and the `ETag`. The server exposes no file hash, so the bytes themselves are not checksummed.
+- Uploads restart from zero after a connection loss (backend limitation, see [Network health and transfer recovery](#network-health-and-transfer-recovery)). Detecting an upload that the server already received relies on name, size and upload time. Two identical files uploaded within the clock-skew tolerance, where the first response was lost, could be matched to the wrong copy. Both copies are still on the server, so nothing is lost.
+- Network health thresholds (32/64 KiB/s, 10 s stall, 30 min wait) are fixed in `AppConfig`, not adapted to file size or network type.
+- Upload speed is measured from the bytes Dio writes to the socket. OS and network buffers can absorb several MB, so on a slow uplink an upload can show *good* and reach 100% ("waiting for the server") before the server has received everything. In the emulator run, 12 MB was buffered at once. Download speed is measured from bytes actually received and has no such gap.
+- When the connection drops, the socket error can arrive a moment before Android reports "offline". For that moment the transfer shows *Reconnecting…* ("Connection interrupted…") before switching to *Connection lost*.
+- Network health was verified on an emulator, with the engine in the test's isolate and a local server. It was not verified inside the foreground-service engine on a physical device, nor against the live server.
 - Transfer history is stored per device and cleared on logout.
 - iOS background execution is not implemented.
 - The Android application ID is still the template's `com.example.laantech_pos_task`.
@@ -483,7 +565,7 @@ Not verified on a physical device: OEM-specific battery killers, the Android 15 
 - Android 14+ **user-initiated data transfer jobs** (native) as an alternative to the `dataSync` foreground service, avoiding the Android 15 six-hour limit.
 - Resumable uploads (chunked or tus protocol), if the backend adds support.
 - "Open file" / share actions for completed downloads (through the stored MediaStore URI).
-- Connectivity-aware transfer scheduling (pause on network loss, resume on reconnect) and Wi-Fi-only mode for large files.
+- Wi-Fi-only mode for large files, and ETA display based on the measured speed.
 - Play downloaded videos from the local public copy instead of streaming.
 - Native iOS `URLSession` background transfers via a platform channel.
-- Transfer speed and ETA display, plus checksum validation if the API exposes hashes.
+- Checksum validation if the API exposes hashes.

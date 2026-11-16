@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:laantech_pos_task/configs/services/connectivity_services/connectivity_service.dart';
 import 'package:laantech_pos_task/configs/services/notification_services/notification_service.dart';
 import 'package:laantech_pos_task/data/network/network_api_service.dart';
 import 'package:laantech_pos_task/data/storage/public_download_storage.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
+import 'package:laantech_pos_task/data/transfer/transfer_network_monitor.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_store.dart';
+import 'package:laantech_pos_task/model/transfer/network_health.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_command.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 
@@ -28,6 +31,7 @@ class TransferTaskHandler extends TaskHandler {
 
   final _ready = Completer<void>();
   late final TransferManager _manager;
+  late final TransferNetworkMonitor _network;
   Timer? _syncTimer;
   Timer? _idleTimer;
   String? _serviceText;
@@ -35,10 +39,20 @@ class TransferTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     await NotificationService.instance.initialize();
-    _manager = TransferManager(store: TransferStore(), apiServices: NetworkApiService(), downloadStorage: PublicDownloadStorage(), notifier: NotificationService.instance, onChanged: _scheduleSync);
+    final api = NetworkApiService();
+    // The isolate's only connectivity listener, shared by every transfer.
+    _network = TransferNetworkMonitor(connectivity: ConnectivityService(), serverReachable: api.isServerReachable);
+    _manager = TransferManager(
+      store: TransferStore(),
+      apiServices: api,
+      downloadStorage: PublicDownloadStorage(),
+      networkMonitor: _network,
+      notifier: NotificationService.instance,
+      onChanged: _scheduleSync,
+    );
     await _manager.restore();
     _ready.complete();
-    _manager.start();
+    await _manager.start();
     await _sync();
   }
 
@@ -61,7 +75,10 @@ class TransferTaskHandler extends TaskHandler {
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     _syncTimer?.cancel();
     _idleTimer?.cancel();
-    if (_ready.isCompleted) await _manager.shutdown();
+    if (_ready.isCompleted) {
+      await _manager.shutdown();
+      await _network.dispose();
+    }
   }
 
   void _scheduleSync() => _syncTimer ??= Timer(_syncInterval, _sync);
@@ -81,11 +98,19 @@ class TransferTaskHandler extends TaskHandler {
     final total = running.fold<int>(0, (sum, task) => sum + task.totalBytes);
     final done = running.fold<int>(0, (sum, task) => sum + task.transferredBytes);
     final percent = total > 0 ? (done * 100 / total).floor() : 0;
-    final text = ['${running.length} active · $percent%', if (queued > 0) '$queued queued'].join(' · ');
+    final text = ['${running.length} active · $percent%', ?_healthNote(running), if (queued > 0) '$queued queued'].join(' · ');
     if (text == _serviceText) return;
     _serviceText = text;
     FlutterForegroundTask.updateService(notificationTitle: 'Transferring files', notificationText: text);
   }
+
+  static String? _healthNote(Iterable<TransferTask> running) => switch (NetworkHealth.worstOf(running.map((task) => task.networkHealth))) {
+    NetworkHealth.offline => 'Waiting for network',
+    NetworkHealth.reconnecting => 'Reconnecting…',
+    NetworkHealth.stalled => 'Network stalled',
+    NetworkHealth.poor => 'Poor network connection',
+    NetworkHealth.resumed || NetworkHealth.good => null,
+  };
 
   void _stopWhenIdle() {
     if (_manager.hasActiveWork) {

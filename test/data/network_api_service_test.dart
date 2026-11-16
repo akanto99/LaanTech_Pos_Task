@@ -236,4 +236,94 @@ void main() {
       throwsA(isA<InvalidInputException>()),
     );
   });
+
+  group('Range resume validation', () {
+    Future<Object?> resume(_FakeAdapter adapter, String path, {String? etag, void Function(String)? onEtag}) async {
+      try {
+        await service(adapter).downloadFileApi('http://host/get?file=f', savePath: path, cancelToken: CancelToken(), onProgress: (_, _) {}, expectedEtag: etag, onEtag: onEtag);
+        return null;
+      } catch (e) {
+        return e;
+      }
+    }
+
+    test('a 206 that does not start at the partial length is never appended', () async {
+      final path = '${root.path}/file.bin.part';
+      File(path).writeAsBytesSync([1, 2, 3]);
+      final adapter = _FakeAdapter(
+        (_) => ResponseBody.fromBytes([9, 9], 206, headers: {
+          HttpHeaders.contentRangeHeader: ['bytes 0-1/5'],
+        }),
+      );
+
+      final error = await resume(adapter, path);
+      expect(error, isA<FetchDataException>().having((e) => e.message, 'message', contains('unexpected byte range')));
+      expect(File(path).existsSync(), isFalse, reason: 'the partial file is discarded and the download restarts');
+    });
+
+    test('a 206 without Content-Range is never appended', () async {
+      final path = '${root.path}/file.bin.part';
+      File(path).writeAsBytesSync([1, 2, 3]);
+      final error = await resume(_FakeAdapter((_) => ResponseBody.fromBytes([4, 5], 206)), path);
+      expect(error, isA<FetchDataException>());
+      expect(File(path).existsSync(), isFalse);
+    });
+
+    test('a changed ETag discards the partial file instead of mixing versions', () async {
+      final path = '${root.path}/file.bin.part';
+      File(path).writeAsBytesSync([1, 2, 3]);
+      final adapter = _FakeAdapter(
+        (_) => ResponseBody.fromBytes([4, 5], 206, headers: {
+          HttpHeaders.contentRangeHeader: ['bytes 3-4/5'],
+          HttpHeaders.etagHeader: ['"v2"'],
+        }),
+      );
+
+      final error = await resume(adapter, path, etag: '"v1"');
+      expect(error, isA<FetchDataException>().having((e) => e.message, 'message', contains('changed on the server')));
+      expect(File(path).existsSync(), isFalse);
+    });
+
+    test('sends If-Range with a strong ETag and reports the response ETag', () async {
+      final path = '${root.path}/file.bin.part';
+      File(path).writeAsBytesSync([1, 2, 3]);
+      final adapter = _FakeAdapter(
+        (_) => ResponseBody.fromBytes([4, 5], 206, headers: {
+          HttpHeaders.contentRangeHeader: ['bytes 3-4/5'],
+          HttpHeaders.etagHeader: ['"v1"'],
+        }),
+      );
+      String? reported;
+
+      expect(await resume(adapter, path, etag: '"v1"', onEtag: (etag) => reported = etag), isNull);
+      expect(adapter.requests.single.headers['If-Range'], '"v1"');
+      expect(File(path).readAsBytesSync(), [1, 2, 3, 4, 5]);
+      expect(reported, '"v1"');
+
+      // Weak validators cannot be used with If-Range.
+      File(path).writeAsBytesSync([1, 2, 3]);
+      final weak = _FakeAdapter((_) => ResponseBody.fromBytes([4, 5], 206, headers: {HttpHeaders.contentRangeHeader: ['bytes 3-4/5']}));
+      await resume(weak, path, etag: 'W/"v1"');
+      expect(weak.requests.single.headers.containsKey('If-Range'), isFalse);
+    });
+  });
+
+  test('network failures are NetworkExceptions; server errors are not', () async {
+    final dropped = _FakeAdapter((_) => throw const SocketException('Network is unreachable'));
+    await expectLater(service(dropped).getGetApiResponse('http://108.136.142.112:90/get'), throwsA(isA<NetworkException>()));
+
+    final unavailable = _FakeAdapter((_) => _json(503, {}));
+    final error = await service(unavailable).getGetApiResponse('http://108.136.142.112:90/get').then<Object?>((_) => null, onError: (Object e) => e);
+    expect(error, isA<FetchDataException>().having((e) => e is NetworkException, 'is network', isFalse));
+  });
+
+  test('server reachability: any HTTP answer is reachable, a socket error is not', () async {
+    final notFound = _FakeAdapter((_) => _json(404, {}));
+    expect(await service(notFound).isServerReachable(), isTrue);
+    expect(notFound.requests.single.method, 'HEAD');
+    expect(notFound.requests.single.headers.containsKey('Authorization'), isFalse, reason: 'the probe carries no token');
+
+    final down = _FakeAdapter((_) => throw const SocketException('Connection refused'));
+    expect(await service(down).isServerReachable(), isFalse);
+  });
 }

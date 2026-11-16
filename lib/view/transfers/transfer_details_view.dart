@@ -6,6 +6,7 @@ import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_actions.dart';
+import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indicator.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
@@ -82,20 +83,24 @@ class TransferDetailsView extends StatelessWidget {
                           minHeight: 8,
                           borderRadius: BorderRadius.circular(4),
                           value: task.progress,
-                          color: TransferStatusChip.colorOf(task.status),
+                          color: TransferNetworkStyle.progressColorOf(task),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '${task.percent}% · ${Formatters.fileSize(task.transferredBytes)} of ${Formatters.fileSize(task.totalBytes)}',
                           style: AppTextStyles.textSize14(context),
                         ),
+                        if (TransferNetworkStyle.appliesTo(task)) ...[
+                          const SizedBox(height: 6),
+                          TransferNetworkIndicator(task: task),
+                        ],
                         if (task.error != null) ...[
                           const SizedBox(height: 12),
                           Text(
                             task.error!,
                             style: AppTextStyles.textSize14(
                               context,
-                              color: AppColors.error,
+                              color: task.status == TransferStatus.failed ? AppColors.error : AppColors.warning,
                             ),
                           ),
                         ],

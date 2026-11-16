@@ -1,5 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
 import 'package:laantech_pos_task/data/transfer/transfer_manager.dart';
+import 'package:laantech_pos_task/model/transfer/network_health.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 
 /// Per-transfer notifications. Used from the foreground-service isolate to
@@ -14,6 +16,7 @@ class NotificationService implements TransferNotifier {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   final _lastStatus = <String, TransferStatus>{};
+  final _lastHealth = <String, NetworkHealth>{};
   final _lastProgress = <String, ({DateTime at, int percent})>{};
 
   Future<void> initialize({void Function(String? transferId)? onTap}) async {
@@ -38,11 +41,14 @@ class NotificationService implements TransferNotifier {
   @override
   void onTaskChanged(TransferTask task) {
     final previous = _lastStatus[task.id];
+    final previousHealth = _lastHealth[task.id];
     _lastStatus[task.id] = task.status;
+    _lastHealth[task.id] = task.networkHealth;
 
+    // One notification per transfer (same id), updated in place.
     switch (task.status) {
       case TransferStatus.running:
-        if (previous != TransferStatus.running || _progressDue(task)) {
+        if (previous != TransferStatus.running || previousHealth != task.networkHealth || _progressDue(task)) {
           _showProgress(task);
         }
       case TransferStatus.paused:
@@ -63,18 +69,38 @@ class NotificationService implements TransferNotifier {
             DateTime.now().difference(last.at) >= _progressInterval);
   }
 
+  /// Title and body for a running or paused transfer, reflecting the network.
+  static ({String title, String body}) progressText(TransferTask task) {
+    final percent = '${task.percent}%';
+    if (task.status == TransferStatus.paused) {
+      final title = task.networkHealth == NetworkHealth.offline ? 'Download paused due to connection loss' : 'Download paused';
+      return (title: title, body: '${task.fileName} · $percent');
+    }
+    final speed = task.bytesPerSecond > 0 ? ' · ${Formatters.fileSize(task.bytesPerSecond)}/s' : '';
+    final verb = task.isUpload ? 'Uploading' : 'Downloading';
+    final title = switch (task.networkHealth) {
+      NetworkHealth.offline => 'Waiting for network',
+      NetworkHealth.reconnecting => 'Reconnecting…',
+      NetworkHealth.resumed => task.isUpload ? 'Restarting upload…' : 'Resuming download…',
+      _ => '$verb…',
+    };
+    final body = switch (task.networkHealth) {
+      NetworkHealth.offline || NetworkHealth.reconnecting => '${task.fileName} · $percent',
+      NetworkHealth.poor => 'Poor network connection · $percent$speed',
+      NetworkHealth.stalled => 'Network stalled · $percent',
+      _ => task.totalBytes > 0 ? '${task.fileName} · $percent$speed' : '${task.fileName} · Starting…',
+    };
+    return (title: title, body: body);
+  }
+
   void _showProgress(TransferTask task) {
     _lastProgress[task.id] = (at: DateTime.now(), percent: task.percent);
     final paused = task.status == TransferStatus.paused;
-    final verb = task.isUpload ? 'Uploading' : 'Downloading';
+    final text = progressText(task);
     _plugin.show(
       id: _id(task),
-      title: paused ? 'Download paused' : '$verb ${task.fileName}',
-      body: paused
-          ? '${task.fileName} · ${task.percent}%'
-          : task.totalBytes > 0
-          ? '${task.percent}%'
-          : 'Starting…',
+      title: text.title,
+      body: text.body,
       payload: task.id,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(

@@ -1,4 +1,5 @@
 import 'package:laantech_pos_task/configs/utils/file_names.dart';
+import 'package:laantech_pos_task/model/transfer/network_health.dart';
 
 enum TransferType { upload, download }
 
@@ -32,6 +33,20 @@ class TransferTask {
   final String? serverFileName;
   final String? remoteUrl;
 
+  /// Link condition while running. Meaningful only for running transfers.
+  final NetworkHealth networkHealth;
+
+  /// Measured throughput of the current attempt; 0 when unknown or waiting.
+  final int bytesPerSecond;
+
+  /// Download: the server `ETag` of the partial file, so a resumed Range
+  /// request is only appended when the file on the server is unchanged.
+  final String? etag;
+
+  /// Upload: when the whole body was last sent. If the response is then lost,
+  /// the server may already have the file; a retry checks before re-uploading.
+  final DateTime? bodySentAt;
+
   const TransferTask({
     required this.id,
     required this.type,
@@ -45,6 +60,10 @@ class TransferTask {
     this.error,
     this.serverFileName,
     this.remoteUrl,
+    this.networkHealth = NetworkHealth.good,
+    this.bytesPerSecond = 0,
+    this.etag,
+    this.bodySentAt,
   });
 
   bool get isUpload => type == TransferType.upload;
@@ -65,21 +84,39 @@ class TransferTask {
   /// A finished transfer of a video references a server file that can be streamed.
   bool get canPlayVideo => status == TransferStatus.completed && serverFileName != null && FileNames.isVideo(fileName);
 
-  TransferTask copyWith({String? localPath, int? totalBytes, int? transferredBytes, TransferStatus? status, String? error, bool clearError = false, String? serverFileName, String? remoteUrl}) =>
-      TransferTask(
-        id: id,
-        type: type,
-        fileName: fileName,
-        localPath: localPath ?? this.localPath,
-        totalBytes: totalBytes ?? this.totalBytes,
-        transferredBytes: transferredBytes ?? this.transferredBytes,
-        status: status ?? this.status,
-        createdAt: createdAt,
-        updatedAt: DateTime.now(),
-        error: clearError ? null : error ?? this.error,
-        serverFileName: serverFileName ?? this.serverFileName,
-        remoteUrl: remoteUrl ?? this.remoteUrl,
-      );
+  TransferTask copyWith({
+    String? localPath,
+    int? totalBytes,
+    int? transferredBytes,
+    TransferStatus? status,
+    String? error,
+    bool clearError = false,
+    String? serverFileName,
+    String? remoteUrl,
+    NetworkHealth? networkHealth,
+    int? bytesPerSecond,
+    String? etag,
+    bool clearEtag = false,
+    DateTime? bodySentAt,
+    bool clearBodySentAt = false,
+  }) => TransferTask(
+    id: id,
+    type: type,
+    fileName: fileName,
+    localPath: localPath ?? this.localPath,
+    totalBytes: totalBytes ?? this.totalBytes,
+    transferredBytes: transferredBytes ?? this.transferredBytes,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    updatedAt: DateTime.now(),
+    error: clearError ? null : error ?? this.error,
+    serverFileName: serverFileName ?? this.serverFileName,
+    remoteUrl: remoteUrl ?? this.remoteUrl,
+    networkHealth: networkHealth ?? this.networkHealth,
+    bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
+    etag: clearEtag ? null : etag ?? this.etag,
+    bodySentAt: clearBodySentAt ? null : bodySentAt ?? this.bodySentAt,
+  );
 
   factory TransferTask.fromJson(Map<String, dynamic> json) => TransferTask(
     id: json['id'] as String,
@@ -94,6 +131,10 @@ class TransferTask {
     error: json['error'] as String?,
     serverFileName: json['serverFileName'] as String?,
     remoteUrl: json['remoteUrl'] as String?,
+    networkHealth: NetworkHealth.values.asNameMap()[json['networkHealth']] ?? NetworkHealth.good,
+    bytesPerSecond: (json['bytesPerSecond'] as num?)?.toInt() ?? 0,
+    etag: json['etag'] as String?,
+    bodySentAt: DateTime.tryParse(json['bodySentAt'] as String? ?? ''),
   );
 
   Map<String, dynamic> toJson() => {
@@ -109,5 +150,9 @@ class TransferTask {
     'error': error,
     'serverFileName': serverFileName,
     'remoteUrl': remoteUrl,
+    'networkHealth': networkHealth.name,
+    'bytesPerSecond': bytesPerSecond,
+    'etag': etag,
+    'bodySentAt': bodySentAt?.toIso8601String(),
   };
 }

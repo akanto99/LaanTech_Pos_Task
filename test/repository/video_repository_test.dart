@@ -26,7 +26,7 @@ class _FakeApi implements BaseApiServices {
   }
 
   @override
-  Future<void> downloadFileApi(String url, {required String savePath, required TransferProgress onProgress, required CancelToken cancelToken}) async {
+  Future<void> downloadFileApi(String url, {required String savePath, required TransferProgress onProgress, required CancelToken cancelToken, String? expectedEtag, void Function(String etag)? onEtag}) async {
     requestedUrls.add(url);
     File(savePath).writeAsBytesSync([1, 2, 3]);
     onProgress(3, 3);
