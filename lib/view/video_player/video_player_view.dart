@@ -10,6 +10,8 @@ import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/data/response/status.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
 import 'package:laantech_pos_task/view_model/video_player_view_model/video_player_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
@@ -102,13 +104,13 @@ class _LoadingView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: ResPonsiveUi.padding(context, horizontal: 0.08, vertical: 0.0375),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (downloading) ...[
               LinearProgressIndicator(value: progress, minHeight: 6, borderRadius: BorderRadius.circular(4)),
-              const SizedBox(height: 12),
+              SizedboxSpaccing.height015(context),
               Text(
                 progress == null ? 'Streaming is unavailable. Downloading the video to play it…' : 'Streaming is unavailable. Downloading the video to play it… ${(progress! * 100).floor()}%',
                 textAlign: TextAlign.center,
@@ -116,7 +118,7 @@ class _LoadingView extends StatelessWidget {
               ),
             ] else ...[
               const CircularProgressIndicator(),
-              const SizedBox(height: 12),
+              SizedboxSpaccing.height015(context),
               Text('Loading video…', style: AppTextStyles.textSize14(context, color: AppColors.subtitle(context))),
             ],
           ],

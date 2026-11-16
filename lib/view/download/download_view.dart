@@ -13,6 +13,8 @@ import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
 import 'package:laantech_pos_task/view_model/server_files_view_model/server_files_view_model.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 class DownloadView extends StatelessWidget {
@@ -62,9 +64,9 @@ class _ServerFilesScreen extends StatelessWidget {
           onRefresh: () => vm.fetchFiles(silent: true),
           child: files.data!.isEmpty
               ? ListView(
-                  children: const [
-                    SizedBox(height: 80),
-                    EmptyStateView(
+                  children: [
+                    SizedBox(height: ResPonsiveUi.height(context, 0.1)),
+                    const EmptyStateView(
                       icon: Icons.folder_open_rounded,
                       title: 'No files on the server',
                       message: 'Files you upload will be listed here.',
@@ -72,9 +74,9 @@ class _ServerFilesScreen extends StatelessWidget {
                   ],
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: ResPonsiveUi.pagePadding(context),
                   itemCount: files.data!.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) => SizedboxSpaccing.height0125(context),
                   itemBuilder: (_, index) =>
                       _ServerFileTile(file: files.data![index]),
                 ),
@@ -150,13 +152,13 @@ class _ServerFileTile extends StatelessWidget {
               )
             : null,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+          padding: ResPonsiveUi.paddingLTRB(context, 0.035, 0.014, 0.01, 0.014),
           child: Column(
             children: [
               Row(
                 children: [
                   Icon(_icon, color: AppColors.secondary, size: 32),
-                  const SizedBox(width: 12),
+                  SizedboxSpaccing.width03(context),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,9 +225,9 @@ class _ServerFileTile extends StatelessWidget {
                 ],
               ),
               if (inFlight) ...[
-                const SizedBox(height: 10),
+                SizedboxSpaccing.height0125(context),
                 Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: EdgeInsets.only(right: ResPonsiveUi.width(context, 0.025)),
                   child: Row(
                     children: [
                       Expanded(
@@ -238,7 +240,7 @@ class _ServerFileTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      SizedboxSpaccing.width025(context),
                       Text(
                         switch (task.status) {
                           TransferStatus.paused => 'Paused ${task.percent}%',
@@ -257,7 +259,7 @@ class _ServerFileTile extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 6, right: 10),
+                      padding: EdgeInsets.only(top: ResPonsiveUi.height(context, 0.0075), right: ResPonsiveUi.width(context, 0.025)),
                       child: TransferNetworkIndicator(task: task),
                     ),
                   ),
@@ -265,7 +267,7 @@ class _ServerFileTile extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 6, right: 10),
+                      padding: EdgeInsets.only(top: ResPonsiveUi.height(context, 0.0075), right: ResPonsiveUi.width(context, 0.025)),
                       child: Text(
                         task.error!,
                         style: AppTextStyles.textSize12(

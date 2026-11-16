@@ -4,6 +4,8 @@ import 'package:laantech_pos_task/configs/res/text_styles.dart';
 import 'package:laantech_pos_task/configs/services/navigator_services/navigation_service.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indicator.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 /// Persistent strip shown above every screen while transfers are active.
@@ -38,14 +40,11 @@ class ActiveTransfersBar extends StatelessWidget {
                 backgroundColor: AppColors.whiteColor.withValues(alpha: 0.25),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+                padding: ResPonsiveUi.padding(context, horizontal: 0.04, vertical: 0.0125),
                 child: Row(
                   children: [
                     Icon(degraded ? TransferNetworkStyle.iconOf(health) : Icons.sync_rounded, color: AppColors.whiteColor),
-                    const SizedBox(width: 12),
+                    SizedboxSpaccing.width03(context),
                     Expanded(
                       child: Text(
                         '$active transfer${active == 1 ? '' : 's'} in progress · $percent%$note',

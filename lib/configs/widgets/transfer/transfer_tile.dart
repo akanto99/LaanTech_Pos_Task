@@ -8,6 +8,8 @@ import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indi
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 
 class TransferTile extends StatelessWidget {
   const TransferTile({super.key, required this.task});
@@ -34,14 +36,14 @@ class TransferTile extends StatelessWidget {
       child: InkWell(
         onTap: () => task.canPlayVideo ? _play(context) : _openDetails(context),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+          padding: ResPonsiveUi.paddingLTRB(context, 0.035, 0.014, 0.02, 0.014),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   _TypeIcon(isUpload: task.isUpload, playable: task.canPlayVideo),
-                  const SizedBox(width: 12),
+                  SizedboxSpaccing.width03(context),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,11 +57,11 @@ class TransferTile extends StatelessWidget {
                             weight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        SizedboxSpaccing.height005(context),
                         // Wraps onto a second line on narrow screens.
                         Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
+                          spacing: ResPonsiveUi.width(context, 0.02),
+                          runSpacing: ResPonsiveUi.height(context, 0.005),
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             TransferStatusChip(status: task.status),
@@ -89,7 +91,7 @@ class TransferTile extends StatelessWidget {
                 ],
               ),
               if (showProgress) ...[
-                const SizedBox(height: 10),
+                SizedboxSpaccing.height0125(context),
                 Row(
                   children: [
                     Expanded(
@@ -106,7 +108,7 @@ class TransferTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    SizedboxSpaccing.width025(context),
                     Text(
                       '${task.percent}%',
                       style: AppTextStyles.textSize12(
@@ -114,16 +116,16 @@ class TransferTile extends StatelessWidget {
                         weight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    SizedboxSpaccing.width015(context),
                   ],
                 ),
                 if (TransferNetworkStyle.appliesTo(task)) ...[
-                  const SizedBox(height: 6),
+                  SizedboxSpaccing.height0075(context),
                   TransferNetworkIndicator(task: task),
                 ],
               ],
               if (task.error != null) ...[
-                const SizedBox(height: 8),
+                SizedboxSpaccing.height01(context),
                 Text(
                   task.error!,
                   style: AppTextStyles.textSize12(

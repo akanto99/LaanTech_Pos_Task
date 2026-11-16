@@ -2,6 +2,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 
 class Utils {
   static void flushBarSuccessMessage(String message, BuildContext context) =>
@@ -22,8 +23,8 @@ class Utils {
     Color iconColor,
   ) {
     Flushbar(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      padding: const EdgeInsets.all(15),
+      margin: ResPonsiveUi.padding(context, horizontal: 0.04, vertical: 0.0125),
+      padding: ResPonsiveUi.padding(context, horizontal: 0.04, vertical: 0.018),
       messageText: Text(
         message,
         style: AppTextStyles.textSize14(

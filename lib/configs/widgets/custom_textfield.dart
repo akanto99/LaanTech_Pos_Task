@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
 
 class CustomTextFormField extends StatelessWidget {
   final String titleText;
@@ -40,7 +41,7 @@ class CustomTextFormField extends StatelessWidget {
           titleText,
           style: AppTextStyles.textSize14(context, weight: FontWeight.w500),
         ),
-        const SizedBox(height: 8),
+        SizedboxSpaccing.height01(context),
         TextFormField(
           controller: controller,
           focusNode: focusCurrent,

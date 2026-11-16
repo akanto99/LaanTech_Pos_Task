@@ -4,6 +4,7 @@ import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
 import 'package:laantech_pos_task/configs/utils/routes/routes_name.dart';
 import 'package:laantech_pos_task/view_model/auth_view_model/auth_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
 import 'package:provider/provider.dart';
 
 class SplashView extends StatefulWidget {
@@ -56,7 +57,7 @@ class _SplashViewState extends State<SplashView> {
                 color: AppColors.primary,
               ),
             ),
-            const SizedBox(height: 20),
+            SizedboxSpaccing.height025(context),
             Text(
               AppConfig.appName,
               style: AppTextStyles.textSize24(
@@ -64,7 +65,7 @@ class _SplashViewState extends State<SplashView> {
                 color: AppColors.whiteColor,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedboxSpaccing.height005(context),
             Text(
               'File Transfer Center',
               style: AppTextStyles.textSize14(
@@ -72,7 +73,7 @@ class _SplashViewState extends State<SplashView> {
                 color: AppColors.whiteColor.withValues(alpha: 0.8),
               ),
             ),
-            const SizedBox(height: 36),
+            SizedboxSpaccing.height04(context),
             const SizedBox(
               width: 28,
               height: 28,

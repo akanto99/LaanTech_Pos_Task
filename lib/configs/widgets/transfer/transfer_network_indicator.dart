@@ -5,6 +5,7 @@ import 'package:laantech_pos_task/configs/utils/formatters/formatters.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.dart';
 import 'package:laantech_pos_task/model/transfer/network_health.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
 
 /// Shared visual language for transfer network health, so the upload,
 /// download, dashboard and persistent bar all show the same state.
@@ -54,7 +55,7 @@ class TransferNetworkIndicator extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(TransferNetworkStyle.iconOf(health), size: 14, color: color),
-        const SizedBox(width: 4),
+        SizedboxSpaccing.width01(context),
         Flexible(
           child: Text(
             speed == null ? health.label : '${health.label} · $speed',

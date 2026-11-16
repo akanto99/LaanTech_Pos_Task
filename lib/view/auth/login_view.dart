@@ -9,6 +9,7 @@ import 'package:laantech_pos_task/configs/widgets/custom_textfield.dart';
 import 'package:laantech_pos_task/view/auth/helpers_widgets/auth_form_layout.dart';
 import 'package:laantech_pos_task/view/auth/helpers_widgets/password_field.dart';
 import 'package:laantech_pos_task/view_model/auth_view_model/auth_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
 import 'package:provider/provider.dart';
 
 class LoginView extends StatefulWidget {
@@ -63,7 +64,7 @@ class _LoginViewState extends State<LoginView> {
                 autofillHints: const [AutofillHints.username],
                 prefixIcon: const Icon(Icons.person_outline),
               ),
-              const SizedBox(height: 16),
+              SizedboxSpaccing.height02(context),
               PasswordField(
                 title: 'Password',
                 controller: _passwordController,
@@ -72,7 +73,7 @@ class _LoginViewState extends State<LoginView> {
                 onSubmitted: (_) => _submit(),
                 autofillHints: const [AutofillHints.password],
               ),
-              const SizedBox(height: 24),
+              SizedboxSpaccing.height03(context),
               Selector<AuthViewModel, bool>(
                 selector: (_, vm) => vm.loading,
                 builder: (_, loading, _) => RoundButton(

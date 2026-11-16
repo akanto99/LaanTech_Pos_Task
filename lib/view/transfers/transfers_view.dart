@@ -4,6 +4,8 @@ import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_tile.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 enum _Filter {
@@ -71,12 +73,12 @@ class _TransfersViewState extends State<TransfersView> {
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: ResPonsiveUi.paddingLTRB(context, 0.04, 0.014, 0.04, 0.005),
             child: Row(
               children: [
                 for (final filter in _Filter.values)
                   Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.only(right: ResPonsiveUi.width(context, 0.02)),
                     child: ChoiceChip(
                       label: Text(
                         '${filter.label} (${vm.tasks.where(filter.matches).length})',
@@ -94,7 +96,7 @@ class _TransfersViewState extends State<TransfersView> {
               child: visible.isEmpty
                   ? ListView(
                       children: [
-                        const SizedBox(height: 80),
+                        SizedBox(height: ResPonsiveUi.height(context, 0.1)),
                         EmptyStateView(
                           icon: Icons.swap_vert_rounded,
                           title: 'Nothing here',
@@ -105,9 +107,9 @@ class _TransfersViewState extends State<TransfersView> {
                       ],
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.all(16),
+                      padding: ResPonsiveUi.pagePadding(context),
                       itemCount: visible.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => SizedboxSpaccing.height0125(context),
                       itemBuilder: (_, index) =>
                           TransferTile(task: visible[index]),
                     ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 
 /// Shared shell for the login and registration forms.
 class AuthFormLayout extends StatelessWidget {
@@ -23,7 +25,7 @@ class AuthFormLayout extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: ResPonsiveUi.padding(context, horizontal: 0.05, vertical: 0.023),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Column(
@@ -40,9 +42,9 @@ class AuthFormLayout extends StatelessWidget {
                       color: AppColors.whiteColor,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  SizedboxSpaccing.height025(context),
                   Text(title, style: AppTextStyles.textSize24(context)),
-                  const SizedBox(height: 6),
+                  SizedboxSpaccing.height0075(context),
                   Text(
                     subtitle,
                     textAlign: TextAlign.center,
@@ -51,14 +53,14 @@ class AuthFormLayout extends StatelessWidget {
                       color: AppColors.subtitle(context),
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  SizedboxSpaccing.height03(context),
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: ResPonsiveUi.cardPadding(context),
                       child: form,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  SizedboxSpaccing.height025(context),
                   footer,
                 ],
               ),

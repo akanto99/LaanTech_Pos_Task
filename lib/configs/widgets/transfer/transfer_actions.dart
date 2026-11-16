@@ -3,6 +3,7 @@ import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 /// Pause / resume / retry / cancel controls valid for the task's state.
@@ -40,7 +41,7 @@ class TransferActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final retryLabel = task.isUpload ? 'Restart upload' : 'Retry (resumes)';
     return Wrap(
-      spacing: 4,
+      spacing: ResPonsiveUi.width(context, 0.01),
       children: [
         if (task.canPause)
           _ActionButton(

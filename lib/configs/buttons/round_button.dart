@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
 
 class RoundButton extends StatelessWidget {
   final String title;
@@ -38,7 +39,7 @@ class RoundButton extends StatelessWidget {
                 children: [
                   if (iconData != null) ...[
                     Icon(iconData, size: 20),
-                    const SizedBox(width: 8),
+                    SizedboxSpaccing.width02(context),
                   ],
                   // Scales the label down on narrow screens or large text
                   // settings instead of overflowing the button.

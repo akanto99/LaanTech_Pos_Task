@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 
 class EmptyStateView extends StatelessWidget {
   const EmptyStateView({
@@ -21,7 +23,7 @@ class EmptyStateView extends StatelessWidget {
     // Scrolls instead of overflowing on short screens (landscape, large text).
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
+        padding: ResPonsiveUi.padding(context, horizontal: 0.08, vertical: 0.0375),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -33,13 +35,13 @@ class EmptyStateView extends StatelessWidget {
               ),
               child: Icon(icon, size: 40, color: AppColors.primary),
             ),
-            const SizedBox(height: 16),
+            SizedboxSpaccing.height02(context),
             Text(
               title,
               textAlign: TextAlign.center,
               style: AppTextStyles.textSize18(context, weight: FontWeight.w600),
             ),
-            const SizedBox(height: 6),
+            SizedboxSpaccing.height0075(context),
             Text(
               message,
               textAlign: TextAlign.center,
@@ -48,7 +50,7 @@ class EmptyStateView extends StatelessWidget {
                 color: AppColors.subtitle(context),
               ),
             ),
-            if (action != null) ...[const SizedBox(height: 20), action!],
+            if (action != null) ...[SizedboxSpaccing.height025(context), action!],
           ],
         ),
       ),

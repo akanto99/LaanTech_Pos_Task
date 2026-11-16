@@ -7,6 +7,8 @@ import 'package:laantech_pos_task/configs/utils/utils.dart';
 import 'package:laantech_pos_task/configs/widgets/state_views.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_tile.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 class UploadView extends StatelessWidget {
@@ -29,11 +31,11 @@ class UploadView extends StatelessWidget {
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: ResPonsiveUi.pagePadding(context),
             sliver: SliverToBoxAdapter(
               child: Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: ResPonsiveUi.cardPadding(context),
                   child: Column(
                     children: [
                       const Icon(
@@ -41,7 +43,7 @@ class UploadView extends StatelessWidget {
                         size: 48,
                         color: AppColors.primary,
                       ),
-                      const SizedBox(height: 12),
+                      SizedboxSpaccing.height015(context),
                       Text(
                         'Select one or more files',
                         style: AppTextStyles.textSize16(
@@ -49,7 +51,7 @@ class UploadView extends StatelessWidget {
                           weight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      SizedboxSpaccing.height0075(context),
                       Text(
                         'Large files are streamed from storage and keep uploading in the background.\n'
                         'Supported: ${AppConfig.uploadExtensions.join(', ')}',
@@ -59,7 +61,7 @@ class UploadView extends StatelessWidget {
                           color: AppColors.subtitle(context),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedboxSpaccing.height02(context),
                       RoundButton(
                         title: vm.picking ? 'Preparing files…' : 'Select files',
                         iconData: Icons.attach_file_rounded,
@@ -83,10 +85,10 @@ class UploadView extends StatelessWidget {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: ResPonsiveUi.paddingLTRB(context, 0.04, 0, 0.04, 0.02),
               sliver: SliverList.separated(
                 itemCount: uploads.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => SizedboxSpaccing.height0125(context),
                 itemBuilder: (_, index) => TransferTile(task: uploads[index]),
               ),
             ),

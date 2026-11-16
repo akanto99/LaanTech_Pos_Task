@@ -11,6 +11,8 @@ import 'package:laantech_pos_task/configs/widgets/transfer/transfer_status_chip.
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/model/video/video_player_args.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 class TransferDetailsView extends StatelessWidget {
@@ -61,11 +63,11 @@ class TransferDetailsView extends StatelessWidget {
               message: 'It may have been cleared from the history.',
             )
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: ResPonsiveUi.pagePadding(context),
               children: [
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: ResPonsiveUi.cardPadding(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -76,26 +78,26 @@ class TransferDetailsView extends StatelessWidget {
                             weight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedboxSpaccing.height01(context),
                         TransferStatusChip(status: task.status),
-                        const SizedBox(height: 16),
+                        SizedboxSpaccing.height02(context),
                         LinearProgressIndicator(
                           minHeight: 8,
                           borderRadius: BorderRadius.circular(4),
                           value: task.progress,
                           color: TransferNetworkStyle.progressColorOf(task),
                         ),
-                        const SizedBox(height: 8),
+                        SizedboxSpaccing.height01(context),
                         Text(
                           '${task.percent}% · ${Formatters.fileSize(task.transferredBytes)} of ${Formatters.fileSize(task.totalBytes)}',
                           style: AppTextStyles.textSize14(context),
                         ),
                         if (TransferNetworkStyle.appliesTo(task)) ...[
-                          const SizedBox(height: 6),
+                          SizedboxSpaccing.height0075(context),
                           TransferNetworkIndicator(task: task),
                         ],
                         if (task.error != null) ...[
-                          const SizedBox(height: 12),
+                          SizedboxSpaccing.height015(context),
                           Text(
                             task.error!,
                             style: AppTextStyles.textSize14(
@@ -104,7 +106,7 @@ class TransferDetailsView extends StatelessWidget {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 12),
+                        SizedboxSpaccing.height015(context),
                         TransferActions(task: task),
                         if (task.canPlayVideo)
                           FilledButton.icon(
@@ -120,7 +122,7 @@ class TransferDetailsView extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedboxSpaccing.height02(context),
                 Card(
                   child: Column(
                     children: [

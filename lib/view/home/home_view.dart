@@ -11,6 +11,8 @@ import 'package:laantech_pos_task/configs/widgets/transfer/transfer_tile.dart';
 import 'package:laantech_pos_task/model/transfer/transfer_task.dart';
 import 'package:laantech_pos_task/view_model/auth_view_model/auth_view_model.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
+import 'package:laantech_pos_task/configs/res/sizedbox_spaccing.dart';
+import 'package:laantech_pos_task/configs/responsive/responsive_ui.dart';
 import 'package:provider/provider.dart';
 
 class HomeView extends StatefulWidget {
@@ -85,10 +87,10 @@ class _HomeViewState extends State<HomeView> {
       body: RefreshIndicator(
         onRefresh: transfers.refresh,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: ResPonsiveUi.pagePadding(context),
           children: [
             _WelcomeCard(username: username),
-            const SizedBox(height: 16),
+            SizedboxSpaccing.height02(context),
             Row(
               children: [
                 _StatTile(
@@ -96,13 +98,13 @@ class _HomeViewState extends State<HomeView> {
                   value: transfers.activeCount,
                   color: AppColors.primary,
                 ),
-                const SizedBox(width: 12),
+                SizedboxSpaccing.width03(context),
                 _StatTile(
                   label: 'Completed',
                   value: transfers.count(TransferStatus.completed),
                   color: AppColors.success,
                 ),
-                const SizedBox(width: 12),
+                SizedboxSpaccing.width03(context),
                 _StatTile(
                   label: 'Failed',
                   value: transfers.count(TransferStatus.failed),
@@ -110,9 +112,9 @@ class _HomeViewState extends State<HomeView> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            SizedboxSpaccing.height03(context),
             _SectionTitle(title: 'Quick actions'),
-            const SizedBox(height: 12),
+            SizedboxSpaccing.height015(context),
             GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -120,8 +122,8 @@ class _HomeViewState extends State<HomeView> {
                 maxCrossAxisExtent: 420,
                 // Grows with the user's text size so the two text lines fit.
                 mainAxisExtent: MediaQuery.textScalerOf(context).scale(84),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+                crossAxisSpacing: ResPonsiveUi.width(context, 0.03),
+                mainAxisSpacing: ResPonsiveUi.height(context, 0.015),
               ),
               children: const [
                 _ActionCard(
@@ -144,7 +146,7 @@ class _HomeViewState extends State<HomeView> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            SizedboxSpaccing.height03(context),
             _SectionTitle(
               title: 'Recent transfers',
               action: recent.isEmpty
@@ -155,10 +157,10 @@ class _HomeViewState extends State<HomeView> {
                       child: const Text('View all'),
                     ),
             ),
-            const SizedBox(height: 8),
+            SizedboxSpaccing.height01(context),
             if (recent.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+                padding: ResPonsiveUi.padding(context, vertical: 0.028),
                 child: Text(
                   'No transfers yet. Upload a file to get started.',
                   textAlign: TextAlign.center,
@@ -171,7 +173,7 @@ class _HomeViewState extends State<HomeView> {
             else
               for (final task in recent)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: EdgeInsets.only(bottom: ResPonsiveUi.height(context, 0.0125)),
                   child: TransferTile(task: task),
                 ),
           ],
@@ -189,7 +191,7 @@ class _WelcomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: ResPonsiveUi.cardPadding(context),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.primary, Color(0xFF3B6CF0)],
@@ -210,7 +212,7 @@ class _WelcomeCard extends StatelessWidget {
                     color: AppColors.whiteColor,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedboxSpaccing.height005(context),
                 Text(
                   'Transfers keep running in the background, even when the app is minimised.',
                   style: AppTextStyles.textSize12(
@@ -221,7 +223,7 @@ class _WelcomeCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          SizedboxSpaccing.width03(context),
           const Icon(
             Icons.storefront_rounded,
             size: 44,
@@ -249,7 +251,7 @@ class _StatTile extends StatelessWidget {
     return Expanded(
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          padding: ResPonsiveUi.padding(context, horizontal: 0.03, vertical: 0.016),
           // One line each, scaled down on narrow screens or large text.
           child: Column(
             children: [
@@ -322,7 +324,7 @@ class _ActionCard extends StatelessWidget {
       child: InkWell(
         onTap: () => Navigator.pushNamed(context, route),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: ResPonsiveUi.padding(context, horizontal: 0.04),
           child: Row(
             children: [
               Container(
@@ -333,7 +335,7 @@ class _ActionCard extends StatelessWidget {
                 ),
                 child: Icon(icon, color: AppColors.primary),
               ),
-              const SizedBox(width: 14),
+              SizedboxSpaccing.width035(context),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -341,6 +343,8 @@ class _ActionCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.textSize16(
                         context,
                         weight: FontWeight.w600,
