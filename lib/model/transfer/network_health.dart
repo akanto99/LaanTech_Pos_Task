@@ -17,14 +17,26 @@ enum NetworkHealth {
   /// The device is online but no data has moved for a while.
   stalled,
 
-  /// The connection is back; checking the server is reachable before retrying.
+  /// Retrying after a connection loss; no data has arrived yet.
   reconnecting,
 
   /// No usable network. Nothing is sent until it returns.
   offline;
 
-  /// No request is in flight; the transfer is waiting for the network.
+  /// No data is moving; the transfer is waiting for the network.
   bool get isWaiting => this == offline || this == reconnecting;
+
+  /// The only four status labels shown anywhere (UI and notifications).
+  /// A short-lived [resumed] or [stalled] state maps onto its nearest label.
+  String get label => switch (this) {
+    good || resumed => 'Good Connection',
+    poor || stalled => 'Poor Connection',
+    reconnecting => 'Reconnecting',
+    offline => 'Connection Lost',
+  };
+
+  /// Whether the transfer is affected (anything but a good connection).
+  bool get isDegraded => this != good && this != resumed;
 
   /// The worst of [healths], or [good] when empty.
   static NetworkHealth worstOf(Iterable<NetworkHealth> healths) => healths.fold(good, (worst, health) => health.index > worst.index ? health : worst);

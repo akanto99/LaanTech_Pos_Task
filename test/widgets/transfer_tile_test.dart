@@ -150,48 +150,56 @@ void main() {
 
     Color barColor(WidgetTester tester) => tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).color!;
 
-    testWidgets('good connection keeps the normal bar color and shows speed', (tester) async {
+    testWidgets('good connection keeps the normal bar color and shows a compact speed', (tester) async {
       await pumpTile(tester, running(NetworkHealth.good, speed: 1536 * 1024));
-      expect(find.textContaining('Good connection'), findsOneWidget);
-      expect(find.textContaining('/s'), findsOneWidget);
+      expect(find.text('Good Connection · 1.5 MB/s'), findsOneWidget);
       expect(barColor(tester), AppColors.primary);
       expect(find.text('40%'), findsOneWidget);
     });
 
-    testWidgets('poor connection tints the bar amber but keeps the real percentage', (tester) async {
+    testWidgets('poor connection turns the bar amber but keeps the real percentage', (tester) async {
       await pumpTile(tester, running(NetworkHealth.poor, speed: 10 * 1024));
-      expect(find.textContaining('Poor connection'), findsOneWidget);
-      expect(barColor(tester).toARGB32() & 0xFFFFFF, AppColors.warning.toARGB32() & 0xFFFFFF);
+      expect(find.text('Poor Connection · 10.0 KB/s'), findsOneWidget);
+      expect(barColor(tester), AppColors.warning);
       expect(find.text('40%'), findsOneWidget);
     });
 
     testWidgets('connection lost turns the bar red, hides speed and keeps progress', (tester) async {
       await pumpTile(tester, running(NetworkHealth.offline, speed: 99999));
-      expect(find.textContaining('Connection lost'), findsOneWidget);
+      expect(find.text('Connection Lost'), findsOneWidget);
       expect(find.textContaining('/s'), findsNothing);
-      expect(barColor(tester).toARGB32() & 0xFFFFFF, AppColors.error.toARGB32() & 0xFFFFFF);
+      expect(barColor(tester), AppColors.error);
       expect(find.text('40%'), findsOneWidget);
     });
 
-    testWidgets('a resumed upload says it restarted rather than resumed', (tester) async {
+    testWidgets('reconnecting is amber with no speed', (tester) async {
+      await pumpTile(tester, running(NetworkHealth.reconnecting, upload: true));
+      expect(find.text('Reconnecting'), findsOneWidget);
+      expect(barColor(tester), AppColors.warning);
+    });
+
+    testWidgets('only the four labels exist; transient states map onto them', (tester) async {
+      expect(NetworkHealth.values.map((h) => h.label).toSet(), {'Good Connection', 'Poor Connection', 'Reconnecting', 'Connection Lost'});
       await pumpTile(tester, running(NetworkHealth.resumed, upload: true));
-      expect(find.textContaining('Upload restarted'), findsOneWidget);
+      expect(find.text('Good Connection'), findsOneWidget);
+      await pumpTile(tester, running(NetworkHealth.stalled));
+      expect(find.text('Poor Connection'), findsOneWidget);
     });
 
     testWidgets('no network indicator for paused or finished transfers', (tester) async {
       await pumpTile(tester, uploadedVideo());
-      expect(find.textContaining('connection'), findsNothing);
+      expect(find.textContaining('Connection'), findsNothing);
     });
 
-    test('notification text follows the network state', () {
-      expect(NotificationService.progressText(running(NetworkHealth.offline)).title, 'Waiting for network');
-      expect(NotificationService.progressText(running(NetworkHealth.reconnecting)).title, 'Reconnecting…');
-      expect(NotificationService.progressText(running(NetworkHealth.resumed, upload: true)).title, 'Restarting upload…');
-      expect(NotificationService.progressText(running(NetworkHealth.resumed)).title, 'Resuming download…');
-      expect(NotificationService.progressText(running(NetworkHealth.poor)).body, startsWith('Poor network connection · 40%'));
+    test('notification text uses the same four labels', () {
+      expect(NotificationService.progressText(running(NetworkHealth.offline)).title, 'Connection Lost');
+      expect(NotificationService.progressText(running(NetworkHealth.reconnecting)).title, 'Reconnecting');
+      expect(NotificationService.progressText(running(NetworkHealth.poor, speed: 10 * 1024)).title, 'Poor Connection');
+      expect(NotificationService.progressText(running(NetworkHealth.poor, speed: 10 * 1024)).body, 'catalog.csv · 40% · 10.0 KB/s');
       expect(NotificationService.progressText(running(NetworkHealth.good, upload: true)).title, 'Uploading…');
+      expect(NotificationService.progressText(running(NetworkHealth.resumed)).title, 'Downloading…');
       final paused = running(NetworkHealth.offline).copyWith(status: TransferStatus.paused);
-      expect(NotificationService.progressText(paused).title, 'Download paused due to connection loss');
+      expect(NotificationService.progressText(paused), (title: 'Download paused', body: 'catalog.csv · 40% · Connection Lost'));
     });
   });
 }

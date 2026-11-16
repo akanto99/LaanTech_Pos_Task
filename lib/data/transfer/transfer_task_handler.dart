@@ -104,13 +104,10 @@ class TransferTaskHandler extends TaskHandler {
     FlutterForegroundTask.updateService(notificationTitle: 'Transferring files', notificationText: text);
   }
 
-  static String? _healthNote(Iterable<TransferTask> running) => switch (NetworkHealth.worstOf(running.map((task) => task.networkHealth))) {
-    NetworkHealth.offline => 'Waiting for network',
-    NetworkHealth.reconnecting => 'Reconnecting…',
-    NetworkHealth.stalled => 'Network stalled',
-    NetworkHealth.poor => 'Poor network connection',
-    NetworkHealth.resumed || NetworkHealth.good => null,
-  };
+  static String? _healthNote(Iterable<TransferTask> running) {
+    final health = NetworkHealth.worstOf(running.map((task) => task.networkHealth));
+    return health.isDegraded ? health.label : null;
+  }
 
   void _stopWhenIdle() {
     if (_manager.hasActiveWork) {

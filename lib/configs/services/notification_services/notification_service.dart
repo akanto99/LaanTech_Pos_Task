@@ -72,24 +72,15 @@ class NotificationService implements TransferNotifier {
   /// Title and body for a running or paused transfer, reflecting the network.
   static ({String title, String body}) progressText(TransferTask task) {
     final percent = '${task.percent}%';
+    final health = task.networkHealth;
     if (task.status == TransferStatus.paused) {
-      final title = task.networkHealth == NetworkHealth.offline ? 'Download paused due to connection loss' : 'Download paused';
-      return (title: title, body: '${task.fileName} · $percent');
+      final lost = health == NetworkHealth.offline ? ' · ${health.label}' : '';
+      return (title: 'Download paused', body: '${task.fileName} · $percent$lost');
     }
-    final speed = task.bytesPerSecond > 0 ? ' · ${Formatters.fileSize(task.bytesPerSecond)}/s' : '';
-    final verb = task.isUpload ? 'Uploading' : 'Downloading';
-    final title = switch (task.networkHealth) {
-      NetworkHealth.offline => 'Waiting for network',
-      NetworkHealth.reconnecting => 'Reconnecting…',
-      NetworkHealth.resumed => task.isUpload ? 'Restarting upload…' : 'Resuming download…',
-      _ => '$verb…',
-    };
-    final body = switch (task.networkHealth) {
-      NetworkHealth.offline || NetworkHealth.reconnecting => '${task.fileName} · $percent',
-      NetworkHealth.poor => 'Poor network connection · $percent$speed',
-      NetworkHealth.stalled => 'Network stalled · $percent',
-      _ => task.totalBytes > 0 ? '${task.fileName} · $percent$speed' : '${task.fileName} · Starting…',
-    };
+    final speed = task.bytesPerSecond > 0 && !health.isWaiting ? ' · ${Formatters.fileSize(task.bytesPerSecond)}/s' : '';
+    // Only the four network labels; a good connection shows the plain verb.
+    final title = health.isDegraded ? health.label : (task.isUpload ? 'Uploading…' : 'Downloading…');
+    final body = task.totalBytes > 0 || health.isDegraded ? '${task.fileName} · $percent$speed' : '${task.fileName} · Starting…';
     return (title: title, body: body);
   }
 

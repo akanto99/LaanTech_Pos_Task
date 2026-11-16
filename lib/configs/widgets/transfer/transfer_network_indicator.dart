@@ -16,38 +16,28 @@ abstract final class TransferNetworkStyle {
   };
 
   static IconData iconOf(NetworkHealth health) => switch (health) {
-    NetworkHealth.good => Icons.wifi_rounded,
-    NetworkHealth.resumed => Icons.restart_alt_rounded,
-    NetworkHealth.poor => Icons.network_check_rounded,
-    NetworkHealth.stalled => Icons.hourglass_bottom_rounded,
+    NetworkHealth.good || NetworkHealth.resumed => Icons.wifi_rounded,
+    NetworkHealth.poor || NetworkHealth.stalled => Icons.network_check_rounded,
     NetworkHealth.reconnecting => Icons.sync_rounded,
     NetworkHealth.offline => Icons.wifi_off_rounded,
-  };
-
-  static String labelOf(TransferTask task) => switch (task.networkHealth) {
-    NetworkHealth.good => 'Good connection',
-    NetworkHealth.resumed => task.isUpload ? 'Upload restarted' : 'Transfer resumed',
-    NetworkHealth.poor => 'Poor connection',
-    NetworkHealth.stalled => 'Stalled · no data received',
-    NetworkHealth.reconnecting => 'Reconnecting…',
-    NetworkHealth.offline => 'Connection lost · waiting for network',
   };
 
   /// Network health applies only while a transfer is running.
   static bool appliesTo(TransferTask task) => task.status == TransferStatus.running;
 
-  /// Progress bar color: the normal running color while healthy, a subtle
-  /// warning or error tint when the network degrades, otherwise the status color.
+  /// Progress bar color: the normal running color on a good connection,
+  /// amber when poor or reconnecting, red when the connection is lost.
+  /// Purely visual: it never affects the transfer itself.
   static Color progressColorOf(TransferTask task) {
-    if (!appliesTo(task)) return TransferStatusChip.colorOf(task.status);
-    return switch (task.networkHealth) {
-      NetworkHealth.good || NetworkHealth.resumed => TransferStatusChip.colorOf(task.status),
-      final health => colorOf(health).withValues(alpha: 0.85),
-    };
+    if (!appliesTo(task) || !task.networkHealth.isDegraded) return TransferStatusChip.colorOf(task.status);
+    return colorOf(task.networkHealth);
   }
+
+  /// Compact speed such as "820 KB/s" or "1.4 MB/s", or null when no data is moving.
+  static String? speedOf(TransferTask task) => task.bytesPerSecond > 0 && !task.networkHealth.isWaiting ? '${Formatters.fileSize(task.bytesPerSecond)}/s' : null;
 }
 
-/// Small "● Good connection · 1.2 MB/s" line for a running transfer. Shows
+/// Small "Good Connection · 1.2 MB/s" line for a running transfer. Shows
 /// nothing for queued, paused or finished transfers.
 class TransferNetworkIndicator extends StatelessWidget {
   const TransferNetworkIndicator({super.key, required this.task});
@@ -59,7 +49,7 @@ class TransferNetworkIndicator extends StatelessWidget {
     if (!TransferNetworkStyle.appliesTo(task)) return const SizedBox.shrink();
     final health = task.networkHealth;
     final color = TransferNetworkStyle.colorOf(health);
-    final speed = task.bytesPerSecond > 0 && !health.isWaiting ? ' · ${Formatters.fileSize(task.bytesPerSecond)}/s' : '';
+    final speed = TransferNetworkStyle.speedOf(task);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -67,7 +57,7 @@ class TransferNetworkIndicator extends StatelessWidget {
         const SizedBox(width: 4),
         Flexible(
           child: Text(
-            '${TransferNetworkStyle.labelOf(task)}$speed',
+            speed == null ? health.label : '${health.label} · $speed',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.textSize12(context, weight: FontWeight.w500, color: color),

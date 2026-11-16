@@ -3,7 +3,6 @@ import 'package:laantech_pos_task/configs/res/color.dart';
 import 'package:laantech_pos_task/configs/res/text_styles.dart';
 import 'package:laantech_pos_task/configs/services/navigator_services/navigation_service.dart';
 import 'package:laantech_pos_task/configs/widgets/transfer/transfer_network_indicator.dart';
-import 'package:laantech_pos_task/model/transfer/network_health.dart';
 import 'package:laantech_pos_task/view_model/transfer_view_model/transfer_view_model.dart';
 import 'package:provider/provider.dart';
 
@@ -18,13 +17,8 @@ class ActiveTransfersBar extends StatelessWidget {
     if (active == 0) return const SizedBox.shrink();
     final percent = (vm.activeProgress * 100).floor();
     final health = vm.activeNetworkHealth;
-    final note = switch (health) {
-      NetworkHealth.offline => ' · Waiting for network',
-      NetworkHealth.reconnecting => ' · Reconnecting…',
-      NetworkHealth.stalled || NetworkHealth.poor => ' · Poor connection',
-      NetworkHealth.good || NetworkHealth.resumed => '',
-    };
-    final degraded = health != NetworkHealth.good && health != NetworkHealth.resumed;
+    final degraded = health.isDegraded;
+    final note = degraded ? ' · ${health.label}' : '';
 
     return Material(
       color: AppColors.primary,
